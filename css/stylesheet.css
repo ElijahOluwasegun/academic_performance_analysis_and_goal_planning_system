@@ -1,0 +1,21 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    background-color: rgb(173, 173, 173);
+    padding: 1.2em 0em;
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+}
+
+.student_email, .student_password {
+    font-weight: bold;
+}
