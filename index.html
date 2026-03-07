@@ -5,18 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cavendish Exam and Goal Portal</title>
     <link rel="stylesheet" href="css/stylesheet.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
 </head>
 <body>
     <header>
-        <h1>CAVENDISH UNIVERSITY</h1>
-        <h2>Academic Performance and Goal Planning</h2>
+        <h4>CAVENDISH UNIVERSITY</h4>
+        <h1>Academic Performance and Goal Planning</h1>
     </header>
     <main>
         <form action="">
-            <label class="student_email" for="email">Student Email:</label>
-            <input type="email" name="Email" id="email" placeholder="aa@students.cavendish.ac.ug" required>
-            <label class="student_password" for="password">Password:</label>
-            <input type="password" name="Password" id="password" required>
+            <div class="input-group">
+                <label class="student_email" for="email">Student Email:</label>
+                <input type="email" name="Email" id="email" placeholder="aa@students.cavendish.ac.ug" required>
+            </div>
+            <div class="input-group">
+                <label class="student_password" for="password">Password:</label>
+                <input type="password" name="Password" id="password" required>
+            </div>
             <button type="submit" name="Submit">Log In</button>
         </form>
     </main>

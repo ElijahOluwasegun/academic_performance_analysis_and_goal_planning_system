@@ -4,18 +4,65 @@
     padding: 0;
 }
 
-header {
+body {
     display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    margin: 0;
+}
+
+header {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
     justify-content: space-between;
+    align-items: center;
     background-color: rgb(173, 173, 173);
     padding: 1.2em 0em;
 }
 
+h4 {
+    margin-left: 1.2em;
+    font-family: "Inter", sans-serif;
+    font-weight: 400;
+    letter-spacing: 0.3rem;
+}
+
+h1 {
+    font-family: "Inter", sans-serif;
+}
+
 main {
     display: flex;
+    justify-content: center;
+    padding: 10em 0em;
+}
+
+form {
+    display: flex;
     flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
 .student_email, .student_password {
+    font-size: 1.2rem;
+    font-family: "Inter", sans-serif;
     font-weight: bold;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: row;
+    gap: 1.2em;
+    align-items: center;
+    align-content: center;
+    align-self: center;
+    padding: 0.3em 1em;
+}
+
+button {
+    border-radius: 7px;
+    width: fit-content;
+    padding: 0.6em 0.6em;
+    margin-top: 1em;
 }
