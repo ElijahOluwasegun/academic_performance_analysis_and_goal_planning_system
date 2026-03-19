@@ -60,9 +60,21 @@ form {
     padding: 0.3em 1em;
 }
 
+input {
+    height: 2em;
+    width: 20em;
+}
+
+input[type="password"] {
+    margin-right: -2.9em;
+}
+
 button {
+    font-size: 1rem;
+    font-weight: bolder;
+    border: 0px;
     border-radius: 7px;
     width: fit-content;
-    padding: 0.6em 0.6em;
-    margin-top: 1em;
+    padding: 0.6em 0.8em;
+    margin-top: 2em;
 }
