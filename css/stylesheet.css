@@ -16,7 +16,7 @@ header {
     grid-template-columns: 1fr 2fr;
     justify-content: space-between;
     align-items: center;
-    background-color: rgb(173, 173, 173);
+    background-color: #213769;
     padding: 1.2em 0em;
 }
 
@@ -25,11 +25,17 @@ h4 {
     font-family: "Inter", sans-serif;
     font-weight: 400;
     letter-spacing: 0.3rem;
+    color: white;
 }
 
 h1 {
     font-family: "Inter", sans-serif;
+    color: white;
 }
+
+/* img {
+    width: 20%;
+} */
 
 main {
     display: flex;
@@ -61,8 +67,10 @@ form {
 }
 
 input {
-    height: 2em;
+    height: 2.5em;
     width: 20em;
+    border: 1.5px solid rgb(172, 172, 172);
+    border-radius: 10px;
 }
 
 input[type="password"] {
@@ -72,9 +80,15 @@ input[type="password"] {
 button {
     font-size: 1rem;
     font-weight: bolder;
+    background-color: #213769;
+    color: white;
     border: 0px;
     border-radius: 7px;
     width: fit-content;
     padding: 0.6em 0.8em;
     margin-top: 2em;
+}
+
+button:hover {
+    background-color: #121e38;
 }
