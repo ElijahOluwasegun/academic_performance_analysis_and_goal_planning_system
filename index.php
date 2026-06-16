@@ -16,14 +16,17 @@
         <!-- <img src="images/cavendish-uganda-court-of-arms.png" alt="cavendish uganda logo"> -->
     </header>
     <main>
+        <?php if (isset($_GET['error']) && $_GET['error'] === 'invalid_credentials'): ?>
+            <p style="color:red;">Invalid email or password. Please try again.</p>
+        <?php endif; ?>
         <form action="ExamResultInterface.php" method="post">
             <div class="input-group">
                 <label class="student_email" for="email">Student Email:</label>
-                <input type="email" name="Email" id="email" placeholder="aa@students.cavendish.ac.ug" required>
+                <input type="email" name="Email" id="student_email" placeholder="aa@students.cavendish.ac.ug" required>
             </div>
             <div class="input-group">
                 <label class="student_password" for="password">Password:</label>
-                <input type="password" name="Password" id="password" required>
+                <input type="password" name="Password" id="student_password" required>
             </div>
             <button type="submit" name="Submit">Log In</button>
         </form>
