@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Jun 16, 2026 at 05:17 AM
+-- Generation Time: Jun 19, 2026 at 08:26 AM
 -- Server version: 8.4.7
 -- PHP Version: 8.3.28
 
@@ -116,20 +116,23 @@ CREATE TABLE IF NOT EXISTS `cgpa_tb` (
   `student_ID` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
   `sem_no` int NOT NULL,
   `year_no` int NOT NULL,
-  `total_quality_points` decimal(3,2) NOT NULL,
-  `total_credit_units` decimal(3,2) NOT NULL,
+  `total_quality_points` decimal(5,2) NOT NULL,
+  `total_credit_units` decimal(4,2) NOT NULL,
   `cgpa_value` decimal(3,2) NOT NULL,
   PRIMARY KEY (`ID`),
-  UNIQUE KEY `uq_cgpa_student` (`student_ID`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `cgpa_tb`
 --
 
 INSERT INTO `cgpa_tb` (`ID`, `student_ID`, `sem_no`, `year_no`, `total_quality_points`, `total_credit_units`, `cgpa_value`) VALUES
-(2, '100-000', 0, 1, 9.99, 4.00, 4.50);
+(1, '100-000', 2, 1, 171.00, 42.00, 4.07),
+(2, '100-000', 3, 2, 264.00, 64.00, 4.13),
+(3, '100-000', 4, 2, 352.00, 86.00, 4.09),
+(4, '100-000', 5, 3, 437.00, 99.99, 4.16),
+(5, '100-000', 6, 3, 538.00, 99.99, 4.24);
 
 -- --------------------------------------------------------
 
@@ -162,21 +165,26 @@ DROP TABLE IF EXISTS `gpa_tb`;
 CREATE TABLE IF NOT EXISTS `gpa_tb` (
   `ID` int NOT NULL AUTO_INCREMENT,
   `student_ID` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `total_quality_points` decimal(3,2) NOT NULL,
-  `total_credit_units` decimal(3,2) NOT NULL,
+  `total_quality_points` decimal(4,2) NOT NULL,
+  `total_credit_units` decimal(4,2) NOT NULL,
   `gpa_value` decimal(3,2) NOT NULL,
   `sem_no` int NOT NULL,
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_gpa_student_sem` (`student_ID`,`sem_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `gpa_tb`
 --
 
 INSERT INTO `gpa_tb` (`ID`, `student_ID`, `total_quality_points`, `total_credit_units`, `gpa_value`, `sem_no`) VALUES
-(2, '100-000', 9.99, 4.00, 4.50, 1);
+(1, '100-000', 73.50, 17.00, 4.32, 1),
+(2, '100-000', 97.50, 25.00, 3.90, 2),
+(3, '100-000', 93.00, 22.00, 4.23, 3),
+(4, '100-000', 88.00, 22.00, 4.00, 4),
+(5, '100-000', 85.00, 19.00, 4.47, 5),
+(6, '100-000', 99.99, 22.00, 4.59, 6);
 
 --
 -- Triggers `gpa_tb`
@@ -260,7 +268,37 @@ INSERT INTO `module_tb` (`ID`, `module_code`, `module_name`, `year_no`, `sem_no`
 (2, 'BIT110', 'Introduction to Information & Communication Technology', 1, 1, 'BIT', 4.0),
 (3, 'BIT113', 'Fundamentals of Information Systems', 1, 1, 'BIT', 3.0),
 (4, 'BBA116', 'Basic Statistics', 1, 1, 'BIT', 3.0),
-(5, 'BJC110', 'Communication Skills and Learning skills for Employability', 1, 1, 'BIT', 4.0);
+(5, 'BJC110', 'Communication Skills and Learning skills for Employability', 1, 1, 'BIT', 4.0),
+(6, 'BIT122', 'Internet Technology & Web Design', 1, 2, 'BIT', 3.0),
+(7, 'BIT123', 'Computer Applications', 1, 2, 'BIT', 4.0),
+(8, 'BIT124', 'E-commerce', 1, 2, 'BIT', 3.0),
+(9, 'BIT125', 'Information Systems Management', 1, 2, 'BIT', 3.0),
+(10, 'BIT126', 'Database Development and Management 1', 1, 2, 'BIT', 4.0),
+(11, 'COM122', 'Principles of Programming', 1, 2, 'BIT', 4.0),
+(12, 'FST121', 'Industrial Training', 1, 2, 'BIT', 4.0),
+(13, 'AGM212', 'Entrepreneurship & Small Business Management', 2, 3, 'BIT', 3.0),
+(14, 'BIT212', 'Systems Analysis and Design', 2, 3, 'BIT', 3.0),
+(15, 'BIT213', 'Web Development and Management', 2, 3, 'BIT', 4.0),
+(16, 'BIT214', 'Computer Networks & Data Communication', 2, 3, 'BIT', 4.0),
+(17, 'BIT215', 'Database Development and Management 2', 2, 3, 'BIT', 4.0),
+(18, 'COM211', 'Object Oriented Programming', 2, 3, 'BIT', 4.0),
+(19, 'BIT222', 'Research Methodology in Computing', 2, 4, 'BIT', 4.0),
+(20, 'BIT223', 'Computer Repair and Maintenance', 2, 4, 'BIT', 3.0),
+(21, 'BIT225', 'Emerging Trends in Information Technology', 2, 4, 'BIT', 3.0),
+(22, 'COM221', 'Operating Systems Principles', 2, 4, 'BIT', 3.0),
+(23, 'COM224', 'Software Engineering Principles', 2, 4, 'BIT', 3.0),
+(24, 'FST220', 'Industrial Training', 2, 4, 'BIT', 4.0),
+(25, 'BIS313', 'Business Systems Modelling', 3, 5, 'BIT', 4.0),
+(26, 'BIT311', 'ICT Project Planning and Management', 3, 5, 'BIT', 3.0),
+(27, 'BIT312', 'Mobile Application Development', 3, 5, 'BIT', 4.0),
+(28, 'BIT314', 'Network Configuration & Management', 3, 5, 'BIT', 4.0),
+(29, 'BIT315', 'Multimedia Systems', 3, 5, 'BIT', 4.0),
+(30, 'BIT321', 'Professional Issues in Computing', 3, 6, 'BIT', 3.0),
+(31, 'BIT325', 'Information Systems Audit', 3, 6, 'BIT', 4.0),
+(32, 'BIT323', 'User Interface Design', 3, 6, 'BIT', 4.0),
+(33, 'BIT324', 'Network and Information Security', 3, 6, 'BIT', 4.0),
+(34, 'BIT322', 'Distributed System Development', 3, 6, 'BIT', 3.0),
+(35, 'FST320', 'Graduation Project', 3, 6, 'BIT', 4.0);
 
 -- --------------------------------------------------------
 
@@ -332,20 +370,52 @@ CREATE TABLE IF NOT EXISTS `results_tb` (
   `status_retake_pass` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
   `created_at` timestamp NOT NULL,
   PRIMARY KEY (`ID`),
-  UNIQUE KEY `letter_grade_2` (`letter_grade`),
-  UNIQUE KEY `letter_grade_3` (`letter_grade`),
-  UNIQUE KEY `grade_point` (`grade_point`),
   KEY `module_code` (`module_code`),
   KEY `student_ID` (`student_ID`),
-  KEY `letter_grade` (`letter_grade`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `letter_grade` (`letter_grade`),
+  KEY `grade_point_2` (`grade_point`)
+) ENGINE=InnoDB AUTO_INCREMENT=36 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `results_tb`
 --
 
 INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`, `cat1_mk`, `cat2_mk`, `exam_mk`, `grade_point`, `letter_grade`, `final_total`, `status_retake_pass`, `created_at`) VALUES
-(1, 'BIT110', '100-000', 1, 1, 17, 18, 40, 4.50, 'B+', 75, 'Pass', '2026-06-15 06:59:19');
+(1, 'BIT110', '100-000', 1, 1, 17, 18, 40, 4.50, 'B+', 75, 'Pass', '2026-06-15 06:59:19'),
+(2, 'BIT111', '100-000', 1, 1, 16, 14, 35, 3.50, 'C+', 65, 'Pass', '2026-06-16 07:30:29'),
+(3, 'BBA116', '100-000', 1, 1, 18, 15, 56, 5.00, 'A', 89, 'Pass', '2026-06-16 07:30:29'),
+(4, 'BIT113', '100-000', 1, 1, 14, 18, 41, 4.00, 'B', 71, 'Pass', '2026-06-16 07:33:27'),
+(5, 'BJC110', '100-000', 1, 1, 15, 17, 45, 4.50, 'B+', 77, 'Pass', '2026-06-16 08:27:40'),
+(6, 'BIT122', '100-000', 1, 2, 18, 19, 50, 5.00, 'A', 87, 'Pass', '2026-06-17 07:04:42'),
+(7, 'BIT123', '100-000', 1, 2, 15, 15, 40, 4.00, 'B', 70, 'Pass', '2026-06-17 07:04:42'),
+(8, 'BIT124', '100-000', 1, 2, 13, 12, 36, 3.00, 'C', 61, 'Pass', '2026-06-17 07:07:33'),
+(9, 'BIT125', '100-000', 1, 2, 12, 14, 30, 2.50, 'D+', 56, 'Pass', '2026-06-17 07:07:33'),
+(10, 'BIT126', '100-000', 1, 2, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-06-17 07:11:45'),
+(11, 'COM122', '100-000', 1, 2, 17, 16, 44, 4.50, 'B+', 77, 'Pass', '2026-06-17 07:11:45'),
+(12, 'FST121', '100-000', 1, 2, 0, 0, 75, 4.50, 'B+', 75, 'Pass', '2026-06-17 07:11:45'),
+(13, 'AGM212', '100-000', 2, 3, 15, 16, 40, 4.00, 'B', 71, 'Pass', '2026-06-17 08:58:30'),
+(14, 'BIT212', '100-000', 2, 3, 17, 18, 48, 5.00, 'A', 83, 'Pass', '2026-06-17 08:58:30'),
+(15, 'BIT213', '100-000', 2, 3, 18, 19, 50, 5.00, 'A', 87, 'Pass', '2026-06-17 08:58:30'),
+(16, 'BIT214', '100-000', 2, 3, 14, 15, 38, 3.50, 'C+', 67, 'Pass', '2026-06-17 08:58:31'),
+(17, 'BIT215', '100-000', 2, 3, 16, 17, 40, 4.00, 'B', 73, 'Pass', '2026-06-17 08:58:31'),
+(18, 'COM211', '100-000', 2, 3, 16, 17, 40, 4.00, 'B', 73, 'Pass', '2026-06-17 08:58:31'),
+(19, 'BIT222', '100-000', 2, 4, 13, 14, 37, 3.00, 'C', 64, 'Pass', '2026-06-17 08:58:32'),
+(20, 'BIT223', '100-000', 2, 4, 17, 18, 46, 5.00, 'A', 81, 'Pass', '2026-06-17 08:58:32'),
+(21, 'BIT225', '100-000', 2, 4, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-06-17 08:58:32'),
+(22, 'COM221', '100-000', 2, 4, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-06-17 08:58:33'),
+(23, 'COM224', '100-000', 2, 4, 14, 16, 38, 3.50, 'C+', 68, 'Pass', '2026-06-17 08:58:33'),
+(24, 'FST220', '100-000', 2, 4, 0, 0, 85, 5.00, 'A', 85, 'Pass', '2026-06-17 08:58:33'),
+(25, 'BIS313', '100-000', 3, 5, 17, 19, 49, 5.00, 'A', 85, 'Pass', '2026-06-17 08:58:33'),
+(26, 'BIT311', '100-000', 3, 5, 12, 15, 35, 3.00, 'C', 62, 'Pass', '2026-06-17 08:58:34'),
+(27, 'BIT312', '100-000', 3, 5, 17, 18, 50, 5.00, 'A', 85, 'Pass', '2026-06-17 08:58:34'),
+(28, 'BIT314', '100-000', 3, 5, 17, 19, 48, 5.00, 'A', 84, 'Pass', '2026-06-17 08:58:35'),
+(29, 'BIT315', '100-000', 3, 5, 13, 16, 42, 4.00, 'B', 71, 'Pass', '2026-06-17 08:58:35'),
+(30, 'BIT321', '100-000', 3, 6, 17, 17, 40, 4.00, 'B', 74, 'Pass', '2026-06-17 08:58:35'),
+(31, 'BIT325', '100-000', 3, 6, 16, 16, 40, 4.00, 'B', 72, 'Pass', '2026-06-17 08:58:35'),
+(32, 'BIT323', '100-000', 3, 6, 17, 18, 47, 5.00, 'A', 82, 'Pass', '2026-06-17 08:58:35'),
+(33, 'BIT324', '100-000', 3, 6, 14, 17, 44, 4.50, 'B+', 75, 'Pass', '2026-06-17 08:58:35'),
+(34, 'BIT322', '100-000', 3, 6, 14, 19, 48, 5.00, 'A', 81, 'Pass', '2026-06-17 08:58:36'),
+(35, 'FST320', '100-000', 3, 6, 0, 0, 90, 5.00, 'A', 90, 'Pass', '2026-06-17 08:58:36');
 
 -- --------------------------------------------------------
 
@@ -361,6 +431,12 @@ CREATE TABLE IF NOT EXISTS `student_tb` (
   `student_email` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `student_password` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
   `program_code` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `gender` enum('M','F') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `nationality` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `date_of_birth` date NOT NULL,
+  `intake_year` int NOT NULL,
+  `intake_session` enum('JAN','MAY','AUG') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `mode_of_entry` enum('Direct','Transfer','Foundation','Mature','Diploma') COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`ID`),
   UNIQUE KEY `student_ID` (`student_ID`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -369,9 +445,51 @@ CREATE TABLE IF NOT EXISTS `student_tb` (
 -- Dumping data for table `student_tb`
 --
 
-INSERT INTO `student_tb` (`ID`, `student_ID`, `student_name`, `student_email`, `student_password`, `program_code`) VALUES
-(1, '100-000', 'Jane Doe', 'jd100000@students.cavendish.ac.ug', '123', 'BIT'),
-(2, '100-001', 'Mary Jane', 'mj100001@students.cavendish.ac.ug', '4321', 'BIT');
+INSERT INTO `student_tb` (`ID`, `student_ID`, `student_name`, `student_email`, `student_password`, `program_code`, `gender`, `nationality`, `date_of_birth`, `intake_year`, `intake_session`, `mode_of_entry`) VALUES
+(1, '100-000', 'Jane Doe', 'jd100000@students.cavendish.ac.ug', '123', 'BIT', 'F', 'Ugandan', '2000-12-10', 2023, 'JAN', 'Direct'),
+(2, '100-001', 'Mary Jane', 'mj100001@students.cavendish.ac.ug', '4321', 'BIT', 'F', 'Kenyan', '1999-04-20', 2024, 'JAN', 'Direct');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `term_mapping_tb`
+--
+
+DROP TABLE IF EXISTS `term_mapping_tb`;
+CREATE TABLE IF NOT EXISTS `term_mapping_tb` (
+  `ID` int NOT NULL AUTO_INCREMENT,
+  `intake_session` enum('JAN','MAY','AUG') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `year_no` int NOT NULL,
+  `sem_no` int NOT NULL,
+  `year_offset` int NOT NULL,
+  `term_month` varchar(5) COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`ID`),
+  UNIQUE KEY `uq_intake_progression` (`intake_session`,`year_no`,`sem_no`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `term_mapping_tb`
+--
+
+INSERT INTO `term_mapping_tb` (`ID`, `intake_session`, `year_no`, `sem_no`, `year_offset`, `term_month`) VALUES
+(1, 'AUG', 1, 1, 0, 'AUG'),
+(2, 'AUG', 1, 2, 1, 'JAN'),
+(3, 'AUG', 2, 3, 1, 'AUG'),
+(4, 'AUG', 2, 4, 2, 'JAN'),
+(5, 'AUG', 3, 5, 2, 'AUG'),
+(6, 'AUG', 3, 6, 3, 'JAN'),
+(7, 'JAN', 1, 1, 0, 'JAN'),
+(8, 'JAN', 1, 2, 0, 'AUG'),
+(9, 'JAN', 2, 3, 1, 'JAN'),
+(10, 'JAN', 2, 4, 1, 'AUG'),
+(11, 'JAN', 3, 5, 2, 'JAN'),
+(12, 'JAN', 3, 6, 2, 'AUG'),
+(13, 'MAY', 1, 1, 0, 'MAY'),
+(14, 'MAY', 1, 2, 0, 'AUG'),
+(15, 'MAY', 2, 3, 1, 'JAN'),
+(16, 'MAY', 2, 4, 1, 'AUG'),
+(17, 'MAY', 3, 5, 2, 'JAN'),
+(18, 'MAY', 3, 6, 2, 'AUG');
 
 --
 -- Constraints for dumped tables
