@@ -171,48 +171,160 @@ if ($hasResults) {
 //   - rationale (string) — why this matters given the student's chosen careers/performance
 // ════════════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════════════
+// SHARED SUBJECT-AREA LIBRARY
+// Used both by the always-visible "Your Upcoming Modules" section and by
+// the career-matched recommendation engine below, so module → subject-area
+// detection only happens in one place.
+// ════════════════════════════════════════════════════════════════════════
+function getConceptLibrary(): array {
+    return [
+        "security"     => [
+            "concepts" => ["Encryption", "Firewalls", "Risk assessment", "Authentication protocols"],
+            "roles"    => ["Security Analyst", "SOC Analyst", "Penetration Tester", "Information Security Officer"],
+        ],
+        "network"      => [
+            "concepts" => ["TCP/IP", "Routing & switching", "Network protocols", "Bandwidth management"],
+            "roles"    => ["Network Engineer", "Network Administrator", "Cloud Network Specialist", "Telecom Engineer"],
+        ],
+        "database"     => [
+            "concepts" => ["SQL", "Normalization", "Indexing", "Transactions"],
+            "roles"    => ["Database Administrator", "Backend Developer", "Data Engineer"],
+        ],
+        "design"       => [
+            "concepts" => ["Wireframing", "Usability heuristics", "Prototyping", "Accessibility"],
+            "roles"    => ["UI/UX Designer", "Product Designer", "Front-End Developer"],
+        ],
+        "system"       => [
+            "concepts" => ["Distributed systems", "APIs", "Scalability", "Fault tolerance"],
+            "roles"    => ["Software Engineer", "Systems Architect", "DevOps Engineer", "Cloud Engineer"],
+        ],
+        "audit"        => [
+            "concepts" => ["Compliance", "Governance frameworks", "Risk controls", "Internal audit"],
+            "roles"    => ["IT Auditor", "Compliance Officer", "Risk Analyst", "Governance Consultant"],
+        ],
+        "professional" => [
+            "concepts" => ["Ethics", "Stakeholder communication", "IT law", "Professional conduct"],
+            "roles"    => ["IT Consultant", "Project Coordinator", "Business Analyst"],
+        ],
+        "data"         => [
+            "concepts" => ["Data modeling", "Statistics", "Visualization", "ETL pipelines"],
+            "roles"    => ["Data Analyst", "Data Scientist", "BI Developer"],
+        ],
+        "mobile"       => [
+            "concepts" => ["App lifecycle", "Cross-platform frameworks", "UI components", "Push notifications"],
+            "roles"    => ["Mobile App Developer", "iOS/Android Engineer"],
+        ],
+        "web"          => [
+            "concepts" => ["HTML/CSS", "Client-server model", "Responsive design", "Web frameworks"],
+            "roles"    => ["Web Developer", "Front-End Developer", "Full-Stack Developer"],
+        ],
+        "programming"  => [
+            "concepts" => ["Algorithms", "Data structures", "OOP principles", "Version control (Git)"],
+            "roles"    => ["Software Developer", "Systems Programmer"],
+        ],
+        "project"      => [
+            "concepts" => ["Scope management", "Agile/Scrum", "Stakeholder planning", "Risk management"],
+            "roles"    => ["IT Project Manager", "Scrum Master", "Delivery Lead"],
+        ],
+        "default"      => [
+            "concepts" => ["Problem-solving", "Technical documentation", "Collaboration tools", "Critical thinking"],
+            "roles"    => ["IT Generalist", "Technical Support Specialist", "Junior Developer"],
+        ],
+    ];
+}
+
+/**
+ * Detects which subject area(s) a module belongs to, based on keywords in
+ * its name. Shared by both the always-visible module details and the
+ * career-matched recommendation engine.
+ */
+function detectModuleAreas(string $moduleName, array $conceptLibrary): array {
+    $nameLower = strtolower($moduleName);
+    $matched = [];
+    foreach ($conceptLibrary as $area => $info) {
+        if ($area !== "default" && str_contains($nameLower, $area)) {
+            $matched[] = $area;
+        }
+    }
+    return $matched ?: ["default"];
+}
+
+/**
+ * Builds always-visible module detail cards (credit units + CGPA framing,
+ * key concepts, real-world relevance, career prospects) — independent of
+ * any career interest selection. This is what makes the page useful the
+ * moment a student lands on it, before they've chosen anything.
+ */
+function buildModuleDetails(array $nextModules, array $allNextModulesForCgpaContext): array {
+    $conceptLibrary = getConceptLibrary();
+
+    // Total credit units across the whole upcoming semester, so we can frame
+    // each module's relative "weight" in the semester's GPA calculation.
+    $semesterTotalCU = array_sum(array_map(fn($m) => (float)$m["credit_unit"], $allNextModulesForCgpaContext));
+
+    $details = [];
+    foreach ($nextModules as $mod) {
+        $cu = (float)$mod["credit_unit"];
+        $shareOfSemester = $semesterTotalCU > 0 ? round(($cu / $semesterTotalCU) * 100) : 0;
+
+        $areas = detectModuleAreas($mod["module_name"], $conceptLibrary);
+
+        $concepts = [];
+        $roles    = [];
+        foreach ($areas as $area) {
+            $concepts = array_merge($concepts, $conceptLibrary[$area]["concepts"]);
+            $roles    = array_merge($roles, $conceptLibrary[$area]["roles"]);
+        }
+        $concepts = array_slice(array_unique($concepts), 0, 6);
+        $roles    = array_slice(array_unique($roles), 0, 4);
+
+        $areaLabel = $areas === ["default"] ? "general IT problem-solving" : strtolower(implode(", ", $areas));
+
+        // Plain-language CGPA-weight framing based on relative credit units.
+        if ($cu >= 4) {
+            $cgpaNote = "This is one of your heavier modules ({$cu} credit units — about {$shareOfSemester}% of this semester's total). Performing well here moves your GPA more than a lighter module would.";
+        } elseif ($cu <= 3 && $cu > 0) {
+            $cgpaNote = "This module carries {$cu} credit units (about {$shareOfSemester}% of this semester's total) — lighter weight, but it still counts toward your GPA, so don't write it off.";
+        } else {
+            $cgpaNote = "Credit unit weighting for this module wasn't available — check with the academic office to confirm how it factors into your GPA.";
+        }
+
+        $details[] = [
+            "module_code"   => $mod["module_code"],
+            "module_name"   => $mod["module_name"],
+            "credit_unit"   => $cu,
+            "share_pct"     => $shareOfSemester,
+            "cgpa_note"     => $cgpaNote,
+            "key_concepts"  => $concepts,
+            "real_world_use"=> "These concepts are commonly applied in roles involving {$areaLabel}.",
+            "career_roles"  => $roles,
+        ];
+    }
+
+    return $details;
+}
+
 /**
  * Built-in rule-based fallback. No external calls, no DB knowledge-base
  * required — works immediately with zero setup. Intentionally simple;
  * swap RECOMMENDATION_SOURCE to 'api' or 'db' for richer output.
  */
 function getFallbackRecommendations(array $nextModules, array $selectedCareers, array $performanceSummary): array {
-    // A tiny built-in concept/keyword library keyed by rough subject-area
-    // guesses from the module name. This is deliberately generic since we
-    // don't have a populated knowledge base table in fallback mode.
-    $conceptLibrary = [
-        "security"     => ["Encryption", "Firewalls", "Risk assessment", "Authentication protocols"],
-        "network"      => ["TCP/IP", "Routing & switching", "Network protocols", "Bandwidth management"],
-        "database"     => ["SQL", "Normalization", "Indexing", "Transactions"],
-        "design"       => ["Wireframing", "Usability heuristics", "Prototyping", "Accessibility"],
-        "system"       => ["Distributed systems", "APIs", "Scalability", "Fault tolerance"],
-        "audit"        => ["Compliance", "Governance frameworks", "Risk controls", "Internal audit"],
-        "professional" => ["Ethics", "Stakeholder communication", "IT law", "Professional conduct"],
-        "data"         => ["Data modeling", "Statistics", "Visualization", "ETL pipelines"],
-        "default"      => ["Problem-solving", "Technical documentation", "Collaboration tools", "Critical thinking"],
-    ];
+    $conceptLibrary = getConceptLibrary();
 
     $careerWeights = [
-        "Software Development"        => ["system", "database", "default"],
+        "Software Development"        => ["system", "database", "programming", "web", "default"],
         "Data Science & Analytics"    => ["data", "database", "default"],
         "Network & Cybersecurity"     => ["security", "network", "default"],
         "Systems & Cloud Engineering" => ["system", "network", "default"],
-        "Business & IT Consulting"    => ["audit", "professional", "default"],
+        "Business & IT Consulting"    => ["audit", "professional", "project", "default"],
         "UI/UX & Product Design"      => ["design", "default"],
     ];
 
     $results = [];
     foreach ($nextModules as $mod) {
-        $nameLower = strtolower($mod["module_name"]);
-        $matchedAreas = [];
-        foreach ($conceptLibrary as $area => $terms) {
-            if ($area !== "default" && str_contains($nameLower, $area)) {
-                $matchedAreas[] = $area;
-            }
-        }
-        if (empty($matchedAreas)) {
-            $matchedAreas[] = "default";
-        }
+        $matchedAreas = detectModuleAreas($mod["module_name"], $conceptLibrary);
 
         // Career overlap: does this module's matched area align with chosen careers?
         $overlapCareers = [];
@@ -227,7 +339,7 @@ function getFallbackRecommendations(array $nextModules, array $selectedCareers, 
 
         $concepts = [];
         foreach ($matchedAreas as $area) {
-            $concepts = array_merge($concepts, $conceptLibrary[$area]);
+            $concepts = array_merge($concepts, $conceptLibrary[$area]["concepts"]);
         }
         $concepts = array_slice(array_unique($concepts), 0, 6);
 
@@ -379,6 +491,10 @@ function priorityClass(string $p): string {
         default  => 'badge-standard',
     };
 }
+
+// ─── Always-visible module details (credit unit/CGPA weight, concepts,
+//     real-world relevance, career prospects) — no career selection needed ───
+$moduleDetails = buildModuleDetails($nextModules, $nextModules);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -395,21 +511,27 @@ function priorityClass(string $p): string {
         body { font-family: 'Inter', sans-serif; font-size: 14px; color: #111; background: #fff; }
 
         .site-header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 1.2em 1.5rem; background: #213769; border-bottom: 1px solid #ccc;
+            display: flex; align-items: center; gap: 0.9rem;
+            padding: 1rem 1.5rem; background: #213769; border-bottom: 1px solid #16213f;
         }
-        .site-header .uni-name { font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #fff; }
-        .site-header .portal-title { font-weight: 700; color: #fff; }
-        .header-right { width: 160px; }
+        .site-header .crest {
+            width: 2.6rem; height: 2.6rem; object-fit: contain; flex: 0 0 auto;
+            background: #fff; border-radius: 6px; padding: 2px;
+        }
+        .header-text { display: flex; flex-direction: column; line-height: 1.25; }
+        .site-header .uni-name { font-weight: 600; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #d9c581; }
+        .site-header .portal-title { font-weight: 700; font-size: 1.05rem; color: #fff; }
+        .header-right { margin-left: auto; width: 1px; }
 
-        .tab-nav { display: flex; gap: 0; padding: .75rem 1.5rem 0; border-bottom: 2px solid #ccc; background: #fff; }
+        .tab-nav { display: flex; gap: .35rem; padding: 0 1.5rem; background: #16213f; border-bottom: 1px solid #0d1730; }
         .tab-btn {
-            padding: .45rem 1.1rem; border: 1px solid #999; border-bottom: none;
-            background: #f0f0f0; font-size: .85rem; font-weight: 600; cursor: pointer;
-            border-radius: 4px 4px 0 0; color: #444; text-decoration: none; transition: background .15s;
+            padding: .8rem 1.1rem .7rem; border: none; background: transparent;
+            font-size: .85rem; font-weight: 600; cursor: pointer; color: rgba(255,255,255,0.68);
+            text-decoration: none; border-bottom: 3px solid transparent;
+            transition: color .15s, border-color .15s, background .15s;
         }
-        .tab-btn:first-child { margin-right: 4px; }
-        .tab-btn.active, .tab-btn:hover { background: #fff; color: #111; border-color: #888; }
+        .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.06); }
+        .tab-btn.active { color: #fff; border-bottom-color: #c9a227; }
 
         .page-wrap { max-width: 1000px; margin: 1.5rem auto; padding: 0 1.5rem 3rem; }
 
@@ -481,6 +603,41 @@ function priorityClass(string $p): string {
 
         .empty { text-align: center; padding: 2.5rem 1rem; color: #888; }
 
+        /* ── Upcoming module detail cards (always visible) ── */
+        .upcoming-grid { display: flex; flex-direction: column; gap: 1rem; }
+        .upcoming-card {
+            background: #fff; border: 1px solid #999; border-radius: 8px;
+            padding: 1.1rem 1.3rem; position: relative;
+        }
+        .upcoming-card-head {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            gap: .75rem; flex-wrap: wrap; margin-bottom: .7rem;
+        }
+        .upcoming-title { font-weight: 700; font-size: 1rem; color: #16213f; }
+        .upcoming-code  { font-size: .8rem; color: #555; font-weight: 500; }
+        .cu-pill {
+            background: #213769; color: #fff; font-size: .76rem; font-weight: 700;
+            padding: .3rem .7rem; border-radius: 14px; white-space: nowrap;
+        }
+
+        .cgpa-note {
+            background: #fff7e6; border: 1px solid #f0d49a; color: #7a4b00;
+            font-size: .82rem; padding: .6rem .8rem; border-radius: 6px; margin-bottom: .8rem;
+            line-height: 1.45;
+        }
+
+        .upcoming-section { margin-top: .7rem; }
+        .upcoming-label {
+            font-size: .74rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .04em; color: #444; margin-bottom: .35rem;
+        }
+        .role-tags { display: flex; flex-wrap: wrap; gap: .35rem; }
+        .role-tag {
+            background: #eef1fa; border: 1px solid #c7cfe8; color: #213769;
+            font-size: .78rem; padding: .2rem .55rem; border-radius: 10px;
+        }
+        .upcoming-text { font-size: .85rem; color: #222; line-height: 1.45; }
+
         @media (max-width: 640px) {
             .stat-row { flex-direction: column; }
         }
@@ -489,8 +646,11 @@ function priorityClass(string $p): string {
 <body>
 
 <header class="site-header">
-    <h4 class="uni-name">Cavendish University</h4>
-    <h1 class="portal-title">Academic Performance and Goal Planning</h1>
+    <img class="crest" src="images/cu_logo.jpg" alt="Cavendish University crest">
+    <div class="header-text">
+        <span class="uni-name">Cavendish University</span>
+        <span class="portal-title">Academic Performance and Goal Planning</span>
+    </div>
     <div class="header-right"></div>
 </header>
 
@@ -505,6 +665,58 @@ function priorityClass(string $p): string {
     <div class="student-row">
         <div class="student-name">Dear, <?= htmlspecialchars(strtoupper($student["student_name"])) ?></div>
         <div class="student-sid"><strong>SID:</strong><?= htmlspecialchars($student["student_ID"]) ?></div>
+    </div>
+
+    <!-- ── Always-visible: upcoming semester's module details ── -->
+    <div class="card">
+        <div class="card-header">
+            Your Upcoming Modules — Year <?= $nextYear ?>, Sem <?= $nextSem ?>
+            <span class="card-sub">Credit units, key concepts, and where each one leads</span>
+        </div>
+        <div class="card-body">
+            <?php if (empty($moduleDetails)): ?>
+                <p class="empty">No module list found for Year <?= $nextYear ?>, Sem <?= $nextSem ?> under your program. Check that <code>module_tb</code> has entries for this program/year/semester.</p>
+            <?php else: ?>
+                <div class="upcoming-grid">
+                    <?php foreach ($moduleDetails as $md): ?>
+                    <div class="upcoming-card">
+                        <div class="upcoming-card-head">
+                            <div>
+                                <div class="upcoming-title"><?= htmlspecialchars($md["module_name"]) ?></div>
+                                <div class="upcoming-code"><?= htmlspecialchars($md["module_code"]) ?></div>
+                            </div>
+                            <span class="cu-pill"><?= htmlspecialchars($md["credit_unit"]) ?> credit units</span>
+                        </div>
+
+                        <div class="cgpa-note">📊 <?= htmlspecialchars($md["cgpa_note"]) ?></div>
+
+                        <div class="upcoming-section">
+                            <div class="upcoming-label">Key Concepts &amp; Terms</div>
+                            <div class="role-tags">
+                                <?php foreach ($md["key_concepts"] as $concept): ?>
+                                <span class="role-tag"><?= htmlspecialchars($concept) ?></span>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+
+                        <div class="upcoming-section">
+                            <div class="upcoming-label">Industry Relevance &amp; Real-Life Application</div>
+                            <div class="upcoming-text"><?= htmlspecialchars($md["real_world_use"]) ?></div>
+                        </div>
+
+                        <div class="upcoming-section">
+                            <div class="upcoming-label">Career Prospects</div>
+                            <div class="role-tags">
+                                <?php foreach ($md["career_roles"] as $role): ?>
+                                <span class="role-tag"><?= htmlspecialchars($role) ?></span>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
 
     <?php if (!$hasResults): ?>
@@ -569,9 +781,9 @@ function priorityClass(string $p): string {
     <?php if ($hasSubmitted): ?>
         <div class="card">
             <div class="card-header">
-                Recommended Focus for Year <?= $nextYear ?>, Sem <?= $nextSem ?>
+                Personalized Priority for Year <?= $nextYear ?>, Sem <?= $nextSem ?>
                 <span class="card-sub">
-                    <?= RECOMMENDATION_SOURCE === 'api' ? 'AI-generated' : 'Rule-based' ?> · based on <?= implode(', ', $selectedCareers) ?>
+                    <?= RECOMMENDATION_SOURCE === 'api' ? 'AI-generated' : 'Rule-based' ?> · which modules matter most for <?= implode(', ', $selectedCareers) ?>
                 </span>
             </div>
             <div class="card-body">
