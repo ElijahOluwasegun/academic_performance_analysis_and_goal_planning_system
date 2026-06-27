@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Jun 19, 2026 at 08:26 AM
+-- Generation Time: Jun 27, 2026 at 07:40 AM
 -- Server version: 8.4.7
 -- PHP Version: 8.3.28
 
@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS `cgpa_tb` (
   `cgpa_value` decimal(3,2) NOT NULL,
   PRIMARY KEY (`ID`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `cgpa_tb`
@@ -132,7 +132,8 @@ INSERT INTO `cgpa_tb` (`ID`, `student_ID`, `sem_no`, `year_no`, `total_quality_p
 (2, '100-000', 3, 2, 264.00, 64.00, 4.13),
 (3, '100-000', 4, 2, 352.00, 86.00, 4.09),
 (4, '100-000', 5, 3, 437.00, 99.99, 4.16),
-(5, '100-000', 6, 3, 538.00, 99.99, 4.24);
+(5, '100-000', 6, 3, 538.00, 99.99, 4.24),
+(17, '100-001', 0, 1, 9.99, 9.99, 1.00);
 
 -- --------------------------------------------------------
 
@@ -172,7 +173,7 @@ CREATE TABLE IF NOT EXISTS `gpa_tb` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_gpa_student_sem` (`student_ID`,`sem_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `gpa_tb`
@@ -184,7 +185,8 @@ INSERT INTO `gpa_tb` (`ID`, `student_ID`, `total_quality_points`, `total_credit_
 (3, '100-000', 93.00, 22.00, 4.23, 3),
 (4, '100-000', 88.00, 22.00, 4.00, 4),
 (5, '100-000', 85.00, 19.00, 4.47, 5),
-(6, '100-000', 99.99, 22.00, 4.59, 6);
+(6, '100-000', 99.99, 22.00, 4.59, 6),
+(7, '100-001', 56.00, 17.00, 3.29, 1);
 
 --
 -- Triggers `gpa_tb`
@@ -237,6 +239,54 @@ INSERT INTO `grade_system` (`grade_ID`, `min_mark`, `max_mark`, `grade_point`, `
 (6, 55, 59, 2.50, 'D+'),
 (7, 50, 54, 2.00, 'D'),
 (8, 0, 49, 0.00, '0');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `lecturer_module_tb`
+--
+
+DROP TABLE IF EXISTS `lecturer_module_tb`;
+CREATE TABLE IF NOT EXISTS `lecturer_module_tb` (
+  `ID` int NOT NULL AUTO_INCREMENT,
+  `lecturer_ID` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `module_code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`ID`),
+  UNIQUE KEY `uq_lecturer_module` (`lecturer_ID`,`module_code`),
+  KEY `module_code` (`module_code`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `lecturer_module_tb`
+--
+
+INSERT INTO `lecturer_module_tb` (`ID`, `lecturer_ID`, `module_code`) VALUES
+(1, '220450', 'BIT213'),
+(2, '220450', 'BIT314');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `lecturer_tb`
+--
+
+DROP TABLE IF EXISTS `lecturer_tb`;
+CREATE TABLE IF NOT EXISTS `lecturer_tb` (
+  `ID` int NOT NULL AUTO_INCREMENT,
+  `lecturer_ID` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `lecturer_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `lecturer_email` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `lecturer_password` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`ID`),
+  UNIQUE KEY `lecturer_ID` (`lecturer_ID`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `lecturer_tb`
+--
+
+INSERT INTO `lecturer_tb` (`ID`, `lecturer_ID`, `lecturer_name`, `lecturer_email`, `lecturer_password`) VALUES
+(1, '220450', 'George David', 'gdavid@cavendish.ac.ug', '123');
 
 -- --------------------------------------------------------
 
@@ -374,7 +424,7 @@ CREATE TABLE IF NOT EXISTS `results_tb` (
   KEY `student_ID` (`student_ID`),
   KEY `letter_grade` (`letter_grade`),
   KEY `grade_point_2` (`grade_point`)
-) ENGINE=InnoDB AUTO_INCREMENT=36 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=41 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `results_tb`
@@ -415,7 +465,35 @@ INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`
 (32, 'BIT323', '100-000', 3, 6, 17, 18, 47, 5.00, 'A', 82, 'Pass', '2026-06-17 08:58:35'),
 (33, 'BIT324', '100-000', 3, 6, 14, 17, 44, 4.50, 'B+', 75, 'Pass', '2026-06-17 08:58:35'),
 (34, 'BIT322', '100-000', 3, 6, 14, 19, 48, 5.00, 'A', 81, 'Pass', '2026-06-17 08:58:36'),
-(35, 'FST320', '100-000', 3, 6, 0, 0, 90, 5.00, 'A', 90, 'Pass', '2026-06-17 08:58:36');
+(35, 'FST320', '100-000', 3, 6, 0, 0, 90, 5.00, 'A', 90, 'Pass', '2026-06-17 08:58:36'),
+(36, 'BIT111', '100-001', 1, 1, 12, 13, 25, 2.00, 'D', 50, 'Pass', '2026-06-22 06:06:01'),
+(37, 'BIT110', '100-001', 1, 1, 14, 13, 30, 2.50, 'D+', 57, 'Pass', '2026-06-22 06:06:01'),
+(38, 'BIT113', '100-001', 1, 1, 16, 17, 45, 4.50, 'B+', 78, 'Pass', '2026-06-22 06:06:01'),
+(39, 'BBA116', '100-001', 1, 1, 15, 15, 39, 3.50, 'C+', 69, 'Pass', '2026-06-22 06:06:01'),
+(40, 'BJC110', '100-001', 1, 1, 16, 14, 41, 4.00, 'B', 71, 'Pass', '2026-06-22 06:06:01');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `result_upload_log_tb`
+--
+
+DROP TABLE IF EXISTS `result_upload_log_tb`;
+CREATE TABLE IF NOT EXISTS `result_upload_log_tb` (
+  `ID` int NOT NULL AUTO_INCREMENT,
+  `lecturer_ID` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `module_code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `file_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `rows_total` int NOT NULL DEFAULT '0',
+  `rows_inserted` int NOT NULL DEFAULT '0',
+  `rows_updated` int NOT NULL DEFAULT '0',
+  `rows_skipped` int NOT NULL DEFAULT '0',
+  `skipped_detail` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `uploaded_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`ID`),
+  KEY `lecturer_ID` (`lecturer_ID`),
+  KEY `module_code` (`module_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -446,8 +524,8 @@ CREATE TABLE IF NOT EXISTS `student_tb` (
 --
 
 INSERT INTO `student_tb` (`ID`, `student_ID`, `student_name`, `student_email`, `student_password`, `program_code`, `gender`, `nationality`, `date_of_birth`, `intake_year`, `intake_session`, `mode_of_entry`) VALUES
-(1, '100-000', 'Jane Doe', 'jd100000@students.cavendish.ac.ug', '123', 'BIT', 'F', 'Ugandan', '2000-12-10', 2023, 'JAN', 'Direct'),
-(2, '100-001', 'Mary Jane', 'mj100001@students.cavendish.ac.ug', '4321', 'BIT', 'F', 'Kenyan', '1999-04-20', 2024, 'JAN', 'Direct');
+(1, '100-000', 'Jane Doe', 'jd100000@students.cavendish.ac.ug', '$2y$10$DHNM0AW4UG4s/', 'BIT', 'F', 'Ugandan', '2000-12-10', 2023, 'JAN', 'Direct'),
+(2, '100-001', 'Mary Jane', 'mj100001@students.cavendish.ac.ug', '$2y$10$wESqlg45fvQgo', 'BIT', 'F', 'Kenyan', '1999-04-20', 2024, 'JAN', 'Direct');
 
 -- --------------------------------------------------------
 
@@ -515,6 +593,13 @@ ALTER TABLE `gpa_tb`
   ADD CONSTRAINT `gpa_tb_ibfk_1` FOREIGN KEY (`student_ID`) REFERENCES `student_tb` (`student_ID`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 --
+-- Constraints for table `lecturer_module_tb`
+--
+ALTER TABLE `lecturer_module_tb`
+  ADD CONSTRAINT `fk_lecturer_module_lecturer` FOREIGN KEY (`lecturer_ID`) REFERENCES `lecturer_tb` (`lecturer_ID`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_lecturer_module_module` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
 -- Constraints for table `module_tb`
 --
 ALTER TABLE `module_tb`
@@ -542,6 +627,13 @@ ALTER TABLE `results_tb`
   ADD CONSTRAINT `results_tb_ibfk_2` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `results_tb_ibfk_3` FOREIGN KEY (`letter_grade`) REFERENCES `grade_system` (`letter_grade`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `results_tb_ibfk_4` FOREIGN KEY (`grade_point`) REFERENCES `grade_system` (`grade_point`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+--
+-- Constraints for table `result_upload_log_tb`
+--
+ALTER TABLE `result_upload_log_tb`
+  ADD CONSTRAINT `fk_log_lecturer` FOREIGN KEY (`lecturer_ID`) REFERENCES `lecturer_tb` (`lecturer_ID`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_log_module` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE RESTRICT ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

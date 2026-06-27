@@ -276,6 +276,24 @@ input:focus {
     text-align: center;
 }
 
+/* ── Lecturer portal link (added below the student login form) ── */
+.staff-link {
+    margin-top: 1rem;
+    font-size: 0.8rem;
+    text-align: center;
+    color: #7b8294;
+}
+
+.staff-link a {
+    color: #213769;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.staff-link a:hover {
+    text-decoration: underline;
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    RESPONSIVE
    ════════════════════════════════════════════════════════════════════════ */
