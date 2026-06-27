@@ -185,51 +185,62 @@ function pillClass(string $g): string {
         .site-header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 1.2em 1.5rem;
+            gap: 0.9rem;
+            padding: 1rem 1.5rem;
             background: #213769;
-            border-bottom: 1px solid #ccc;
+            border-bottom: 1px solid #16213f;
         }
+        .site-header .crest {
+            width: 2.6rem;
+            height: 2.6rem;
+            object-fit: contain;
+            flex: 0 0 auto;
+            background: #fff;
+            border-radius: 6px;
+            padding: 2px;
+        }
+        .header-text { display: flex; flex-direction: column; line-height: 1.25; }
         .site-header .uni-name {
             font-weight: 600;
-            letter-spacing: .12em;
+            font-size: 0.72rem;
+            letter-spacing: .14em;
             text-transform: uppercase;
-            color: #fff;
+            color: #d9c581;
         }
         .site-header .portal-title {
             font-weight: 700;
+            font-size: 1.05rem;
             color: #fff;
         }
-        /* spacer so title centers between logo-text and empty right */
-        .header-right { width: 160px; }
+        .header-right { margin-left: auto; width: 1px; }
 
         /* ── Tab nav ── */
         .tab-nav {
             display: flex;
-            gap: 0;
-            padding: .75rem 1.5rem 0;
-            border-bottom: 2px solid #ccc;
-            background: #fff;
+            gap: 0.35rem;
+            padding: 0 1.5rem;
+            background: #16213f;
+            border-bottom: 1px solid #0d1730;
         }
         .tab-btn {
-            padding: .45rem 1.1rem;
-            border: 1px solid #999;
-            border-bottom: none;
-            background: #f0f0f0;
+            padding: .8rem 1.1rem .7rem;
+            border: none;
+            background: transparent;
             font-size: .85rem;
             font-weight: 600;
             cursor: pointer;
-            border-radius: 4px 4px 0 0;
-            color: #444;
+            color: rgba(255,255,255,0.68);
             text-decoration: none;
-            transition: background .15s;
+            border-bottom: 3px solid transparent;
+            transition: color .15s, border-color .15s, background .15s;
         }
-        .tab-btn:first-child { margin-right: 4px; }
-        .tab-btn.active,
         .tab-btn:hover {
-            background: #fff;
-            color: #111;
-            border-color: #888;
+            color: #fff;
+            background: rgba(255,255,255,0.06);
+        }
+        .tab-btn.active {
+            color: #fff;
+            border-bottom-color: #ffffff;
         }
 
         /* ── Page content ── */
@@ -301,7 +312,7 @@ function pillClass(string $g): string {
         thead th:last-child   { border-right: none; }
 
         tbody td {
-            background: #e8e8e8;
+            background: #fff;
             padding: .5rem .75rem;
             border-bottom: 1px solid #a5a5a5;
             border-right: 1px solid #a5a5a5;
@@ -356,7 +367,7 @@ function pillClass(string $g): string {
             gap: .3rem;
         }
         .badge-label {
-            background: #111;
+            background: #16213f;
             color: #fff;
             font-weight: 700;
             font-size: .8rem;
@@ -379,11 +390,11 @@ function pillClass(string $g): string {
             padding: .35rem .85rem;
             border: 1px solid #888;
             border-radius: 20px;
-            background: #f0f0f0;
+            background: #16213f;
             font-size: .82rem;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            color: #111;
+            color: #fff;
             transition: background .15s;
         }
         .btn-action:hover,
@@ -415,13 +426,13 @@ function pillClass(string $g): string {
         }
         .btn-print {
             padding: .45rem 1.4rem;
-            border: 1px solid #888;
+            border: 1px solid;
             border-radius: 20px;
-            background: #e8e8e8;
+            background: #16213f;
             font-size: .9rem;
             font-weight: 600;
             cursor: pointer;
-            color: #111;
+            color: #fff;
         }
         .btn-print:hover { background: #d0d0d0; }
 
@@ -436,8 +447,11 @@ function pillClass(string $g): string {
 <body>
 
 <header class="site-header">
-    <h4 class="uni-name">Cavendish University</h4>
-    <h1 class="portal-title">Academic Performance and Goal Planning</h1>
+    <img class="crest" src="images/cu_logo.jpg" alt="Cavendish University crest">
+    <div class="header-text">
+        <span class="uni-name">Cavendish University</span>
+        <span class="portal-title">Academic Performance and Goal Planning</span>
+    </div>
     <div class="header-right"></div>
 </header>
 
