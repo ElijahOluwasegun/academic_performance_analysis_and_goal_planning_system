@@ -1,8 +1,4 @@
 <?php
-// ── TEMPORARY DEBUG: remove these two lines once the page is working ──────────
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
-
 session_start();
 
 // Allow access if they are logging in via POST OR if they already have an active session
@@ -168,6 +164,101 @@ foreach ($allResults as $r) {
     }
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// STUDENT-FACING INSIGHTS — turns raw numbers into a narrative
+// ════════════════════════════════════════════════════════════════════════
+
+// ─── GPA trend direction across the last few semesters ────────────────────────
+$gpaTrend = "steady";
+$gpaTrendDelta = 0.0;
+$validGpaSeries = array_values(array_filter($gpaSeries, fn($v) => $v !== null));
+if (count($validGpaSeries) >= 2) {
+    $recent  = array_slice($validGpaSeries, -3); // up to last 3 semesters
+    $gpaTrendDelta = round(end($recent) - $recent[0], 2);
+    if ($gpaTrendDelta > 0.1) {
+        $gpaTrend = "rising";
+    } elseif ($gpaTrendDelta < -0.1) {
+        $gpaTrend = "falling";
+    }
+}
+$latestGpa = !empty($validGpaSeries) ? end($validGpaSeries) : null;
+
+// ─── Grade scale, used to compute "marks from next grade" ─────────────────────
+$stmtGrades = $pdo->query("SELECT min_mark, max_mark, grade_point, letter_grade FROM grade_system ORDER BY min_mark ASC");
+$gradeScale = $stmtGrades->fetchAll();
+
+/**
+ * Given a mark, find how many marks away the student is from the next
+ * grade band up. Returns null if already at the top band.
+ */
+function marksFromNextGrade(array $gradeScale, int $mark): ?array {
+    foreach ($gradeScale as $i => $band) {
+        if ($mark >= (int)$band["min_mark"] && $mark <= (int)$band["max_mark"]) {
+            $nextBand = $gradeScale[$i + 1] ?? null;
+            if (!$nextBand) {
+                return null; // already top grade
+            }
+            return [
+                "marks_needed" => (int)$nextBand["min_mark"] - $mark,
+                "next_grade"   => $nextBand["letter_grade"],
+            ];
+        }
+    }
+    return null;
+}
+
+// ─── "Close calls" — modules within 4 marks of the next grade band up ─────────
+$closeCalls = [];
+foreach ($allResults as $r) {
+    $gap = marksFromNextGrade($gradeScale, (int)$r["final_total"]);
+    if ($gap !== null && $gap["marks_needed"] > 0 && $gap["marks_needed"] <= 4) {
+        $closeCalls[] = [
+            "module_name"  => $r["module_name"],
+            "module_code"  => $r["module_code"],
+            "marks_needed" => $gap["marks_needed"],
+            "next_grade"   => $gap["next_grade"],
+            "current_mark" => (int)$r["final_total"],
+        ];
+    }
+}
+// Show the closest ones first (smallest gap = most encouraging/actionable)
+usort($closeCalls, fn($a, $b) => $a["marks_needed"] <=> $b["marks_needed"]);
+$closeCalls = array_slice($closeCalls, 0, 4);
+
+// ─── Strongest subject area this semester (simple: highest mark module) ───────
+$topModule = null;
+if (!empty($allResults)) {
+    $sortedByMark = $allResults;
+    usort($sortedByMark, fn($a, $b) => (int)$b["final_total"] <=> (int)$a["final_total"]);
+    $topModule = $sortedByMark[0];
+}
+
+// ─── Any goals the student has set (from Goal Planning) for modules already
+//     reflected in results, to show "you hit your target" or "almost there" ──
+$stmtGoals = $pdo->prepare("
+    SELECT g.module_code, g.target_mark, m.module_name
+    FROM   goal_setting_tb g
+    JOIN   module_tb m ON g.module_code = m.module_code
+    WHERE  g.student_ID = ?
+");
+$stmtGoals->execute([$studentID]);
+$goalRows = $stmtGoals->fetchAll();
+
+$goalComparisons = [];
+foreach ($goalRows as $goal) {
+    foreach ($allResults as $r) {
+        if ($r["module_code"] === $goal["module_code"]) {
+            $goalComparisons[] = [
+                "module_name" => $goal["module_name"],
+                "target_mark" => (int)$goal["target_mark"],
+                "actual_mark" => (int)$r["final_total"],
+                "hit_goal"    => (int)$r["final_total"] >= (int)$goal["target_mark"],
+            ];
+            break;
+        }
+    }
+}
+
 // ─── JSON payloads for Chart.js ────────────────────────────────────────────────
 $jsSemesterLabels = json_encode($semesterLabels);
 $jsSemesterKeys   = json_encode($semesterKeys);
@@ -201,54 +292,66 @@ $hasData = !empty($allResults);
             background: #fff;
         }
 
-        /* ── Header (same as Results page) ── */
+        /* ── Header (brand-consistent with Results page) ── */
         .site-header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 1.2em 1.5rem;
+            gap: 0.9rem;
+            padding: 1rem 1.5rem;
             background: #213769;
-            border-bottom: 1px solid #ccc;
+            border-bottom: 1px solid #16213f;
         }
+        .site-header .crest {
+            width: 2.6rem;
+            height: 2.6rem;
+            object-fit: contain;
+            flex: 0 0 auto;
+            background: #fff;
+            border-radius: 6px;
+            padding: 2px;
+        }
+        .header-text { display: flex; flex-direction: column; line-height: 1.25; }
         .site-header .uni-name {
             font-weight: 600;
-            letter-spacing: .12em;
+            font-size: 0.72rem;
+            letter-spacing: .14em;
             text-transform: uppercase;
-            color: #fff;
+            color: #d9c581;
         }
         .site-header .portal-title {
             font-weight: 700;
+            font-size: 1.05rem;
             color: #fff;
         }
-        .header-right { width: 160px; }
+        .header-right { margin-left: auto; width: 1px; }
 
-        /* ── Tab nav (same as Results page) ── */
+        /* ── Tab nav (brand-consistent with Results page) ── */
         .tab-nav {
             display: flex;
-            gap: 0;
-            padding: .75rem 1.5rem 0;
-            border-bottom: 2px solid #ccc;
-            background: #fff;
+            gap: 0.35rem;
+            padding: 0 1.5rem;
+            background: #16213f;
+            border-bottom: 1px solid #0d1730;
         }
         .tab-btn {
-            padding: .45rem 1.1rem;
-            border: 1px solid #999;
-            border-bottom: none;
-            background: #f0f0f0;
+            padding: .8rem 1.1rem .7rem;
+            border: none;
+            background: transparent;
             font-size: .85rem;
             font-weight: 600;
             cursor: pointer;
-            border-radius: 4px 4px 0 0;
-            color: #444;
+            color: rgba(255,255,255,0.68);
             text-decoration: none;
-            transition: background .15s;
+            border-bottom: 3px solid transparent;
+            transition: color .15s, border-color .15s, background .15s;
         }
-        .tab-btn:first-child { margin-right: 4px; }
-        .tab-btn.active,
         .tab-btn:hover {
-            background: #fff;
-            color: #111;
-            border-color: #888;
+            color: #fff;
+            background: rgba(255,255,255,0.06);
+        }
+        .tab-btn.active {
+            color: #fff;
+            border-bottom-color: #c9a227;
         }
 
         /* ── Page content ── */
@@ -340,8 +443,65 @@ $hasData = !empty($allResults);
         /* ── Empty state ── */
         .empty { text-align: center; padding: 3rem 1rem; color: #888; }
 
+        /* ── Narrative hero (the headline framing) ── */
+        .hero {
+            border-radius: 8px;
+            padding: 1.4rem 1.6rem;
+            margin-bottom: 1.5rem;
+            color: #fff;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+        .hero.trend-rising  { background: linear-gradient(135deg, #14532d, #166534); }
+        .hero.trend-steady  { background: linear-gradient(135deg, #1e3a6e, #213769); }
+        .hero.trend-falling { background: linear-gradient(135deg, #7c2d12, #92400e); }
+        .hero-icon { font-size: 1.8rem; line-height: 1; flex: 0 0 auto; }
+        .hero-title { font-size: 1.15rem; font-weight: 700; margin-bottom: .35rem; }
+        .hero-sub { font-size: .88rem; opacity: .92; line-height: 1.5; }
+
+        /* ── Close-call module cards (marks from next grade) ── */
+        .close-call-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: .85rem;
+        }
+        .close-call-card {
+            background: #fff;
+            border: 1px solid #d8b56a;
+            border-left: 4px solid #c9a227;
+            border-radius: 6px;
+            padding: .85rem 1rem;
+        }
+        .close-call-card .cc-module { font-weight: 700; font-size: .9rem; color: #16213f; margin-bottom: .2rem; }
+        .close-call-card .cc-detail { font-size: .82rem; color: #444; }
+        .close-call-card .cc-marks { font-weight: 700; color: #92400e; }
+
+        /* ── Goal comparison strip ── */
+        .goal-strip { display: flex; flex-direction: column; gap: .6rem; }
+        .goal-row {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #fff; border: 1px solid #999; border-radius: 6px;
+            padding: .7rem .9rem; font-size: .85rem; gap: .75rem; flex-wrap: wrap;
+        }
+        .goal-row .goal-mod { font-weight: 600; }
+        .goal-pill {
+            font-size: .76rem; font-weight: 700; padding: .2rem .6rem; border-radius: 12px;
+        }
+        .goal-pill.hit  { background: #d1fae5; color: #065f46; }
+        .goal-pill.miss { background: #fde2e2; color: #991b1b; }
+
+        /* ── Reassurance banner (used when retakes = 0) ── */
+        .reassurance {
+            display: flex; align-items: center; gap: .75rem;
+            background: #ecfdf5; border: 1px solid #a7e0c4; border-radius: 6px;
+            padding: .9rem 1.1rem; font-size: .88rem; color: #065f46;
+        }
+        .reassurance .r-icon { font-size: 1.3rem; }
+
         @media (max-width: 640px) {
             .stat-row { flex-direction: column; }
+            .hero { flex-direction: column; }
         }
     </style>
 </head>
@@ -349,8 +509,11 @@ $hasData = !empty($allResults);
 
 <!-- ── Site Header ── -->
 <header class="site-header">
-    <h4 class="uni-name">Cavendish University</h4>
-    <h1 class="portal-title">Academic Performance and Goal Planning</h1>
+    <img class="crest" src="images/cu_logo.jpg" alt="Cavendish University crest">
+    <div class="header-text">
+        <span class="uni-name">Cavendish University</span>
+        <span class="portal-title">Academic Performance and Goal Planning</span>
+    </div>
     <div class="header-right"></div>
 </header>
 
@@ -377,6 +540,85 @@ $hasData = !empty($allResults);
         <p class="empty">No results found yet — analysis will appear once results are recorded.</p>
     <?php else: ?>
 
+    <!-- ── Narrative hero: the headline framing ── -->
+    <div class="hero trend-<?= $gpaTrend ?>">
+        <div class="hero-icon">
+            <?= $gpaTrend === 'rising' ? '📈' : ($gpaTrend === 'falling' ? '⚠️' : '🎯') ?>
+        </div>
+        <div>
+            <?php if ($gpaTrend === 'rising'): ?>
+                <div class="hero-title">You're trending upward — nice work.</div>
+                <div class="hero-sub">
+                    Your GPA has climbed by <?= number_format(abs($gpaTrendDelta), 2) ?> point<?= abs($gpaTrendDelta) == 1 ? '' : 's' ?>
+                    over your last few semesters<?= $latestGpa !== null ? ', reaching ' . number_format($latestGpa, 2) . ' most recently' : '' ?>.
+                    Keep doing what's working — consistency from here builds your CGPA fastest.
+                </div>
+            <?php elseif ($gpaTrend === 'falling'): ?>
+                <div class="hero-title">Your GPA has dipped recently — let's turn it around.</div>
+                <div class="hero-sub">
+                    It's dropped by <?= number_format(abs($gpaTrendDelta), 2) ?> point<?= abs($gpaTrendDelta) == 1 ? '' : 's' ?>
+                    over your last few semesters. That's recoverable — check the close calls below and
+                    use Goal Planning to set targets for next semester's modules.
+                </div>
+            <?php else: ?>
+                <div class="hero-title">You're holding steady.</div>
+                <div class="hero-sub">
+                    Your GPA has stayed consistent across recent semesters<?= $latestGpa !== null ? ' at around ' . number_format($latestGpa, 2) : '' ?>.
+                    If you're aiming higher, the close calls below show exactly where a few extra marks would move the needle.
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ── Close calls: marks away from the next grade ── -->
+    <?php if (!empty($closeCalls)): ?>
+    <div class="card">
+        <div class="card-header">
+            So Close — A Few Marks From the Next Grade
+            <span class="card-sub">Where extra effort would pay off fastest</span>
+        </div>
+        <div class="card-body">
+            <div class="close-call-grid">
+                <?php foreach ($closeCalls as $cc): ?>
+                <div class="close-call-card">
+                    <div class="cc-module"><?= htmlspecialchars($cc["module_name"]) ?></div>
+                    <div class="cc-detail">
+                        Scored <?= $cc["current_mark"] ?>% —
+                        <span class="cc-marks"><?= $cc["marks_needed"] ?> mark<?= $cc["marks_needed"] == 1 ? '' : 's' ?> away</span>
+                        from a <?= htmlspecialchars($cc["next_grade"]) ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- ── Goal comparisons (only if the student has set targets in Goal Planning) ── -->
+    <?php if (!empty($goalComparisons)): ?>
+    <div class="card">
+        <div class="card-header">
+            Your Targets vs. What You Scored
+            <span class="card-sub">From your Goal Planning targets</span>
+        </div>
+        <div class="card-body">
+            <div class="goal-strip">
+                <?php foreach ($goalComparisons as $gc): ?>
+                <div class="goal-row">
+                    <span class="goal-mod"><?= htmlspecialchars($gc["module_name"]) ?></span>
+                    <span>
+                        Target: <?= $gc["target_mark"] ?>% · Scored: <?= $gc["actual_mark"] ?>%
+                        <span class="goal-pill <?= $gc["hit_goal"] ? 'hit' : 'miss' ?>">
+                            <?= $gc["hit_goal"] ? 'Goal hit' : 'Just short' ?>
+                        </span>
+                    </span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- ── Quick stats ── -->
     <div class="stat-row">
         <div class="stat-box">
@@ -401,28 +643,45 @@ $hasData = !empty($allResults);
         </div>
     </div>
 
-    <!-- ── CAT1 / CAT2 / Exam trend ── -->
-    <div class="card">
-        <div class="card-header">
-            CAT &amp; Exam Performance Trend
-            <span class="card-sub">Average marks per semester</span>
-        </div>
-        <div class="card-body">
-            <div class="chart-wrap">
-                <canvas id="catTrendChart"></canvas>
-            </div>
-        </div>
+    <?php if ($retakeCount === 0): ?>
+    <div class="reassurance">
+        <span class="r-icon">✅</span>
+        <span>No retakes on record — every module you've taken so far, you've passed. Keep it up.</span>
     </div>
+    <?php endif; ?>
 
     <!-- ── GPA / CGPA trend ── -->
     <div class="card">
         <div class="card-header">
             GPA &amp; CGPA Trend
-            <span class="card-sub">Progress across semesters</span>
+            <span class="card-sub">Your progress, semester by semester</span>
         </div>
         <div class="card-body">
+            <?php if ($topModule): ?>
+            <p style="font-size:.85rem; color:#333; margin-bottom:.75rem;">
+                Your strongest result so far was <strong><?= htmlspecialchars($topModule["module_name"]) ?></strong>
+                at <?= (int)$topModule["final_total"] ?>%. Watching this line climb is the clearest sign your study approach is paying off.
+            </p>
+            <?php endif; ?>
             <div class="chart-wrap">
                 <canvas id="gpaTrendChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── CAT1 / CAT2 / Exam trend ── -->
+    <div class="card">
+        <div class="card-header">
+            CAT &amp; Exam Performance Trend
+            <span class="card-sub">Are exams or continuous assessment your strength?</span>
+        </div>
+        <div class="card-body">
+            <p style="font-size:.85rem; color:#333; margin-bottom:.75rem;">
+                If one line consistently sits below the others, that's where to focus next —
+                e.g. low exam marks relative to CATs often means revision timing, not understanding, is the gap.
+            </p>
+            <div class="chart-wrap">
+                <canvas id="catTrendChart"></canvas>
             </div>
         </div>
     </div>
@@ -436,19 +695,6 @@ $hasData = !empty($allResults);
         <div class="card-body">
             <div class="chart-wrap">
                 <canvas id="moduleScoreChart"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Pass vs Retake breakdown ── -->
-    <div class="card">
-        <div class="card-header">
-            Pass / Retake Breakdown
-            <span class="card-sub">All recorded modules</span>
-        </div>
-        <div class="card-body">
-            <div class="chart-wrap" style="max-width:340px; margin:0 auto; height:280px;">
-                <canvas id="passRetakeChart"></canvas>
             </div>
         </div>
     </div>
@@ -553,25 +799,9 @@ $hasData = !empty($allResults);
     }
     renderModuleChart(semSelect.value);
     semSelect.addEventListener('change', () => renderModuleChart(semSelect.value));
-
-    // ── Pass / Retake breakdown (doughnut) ──────────────────────────────────
-    new Chart(document.getElementById('passRetakeChart'), {
-        type: 'doughnut',
-        data: {
-            labels: ['Pass', 'Retake'],
-            datasets: [{
-                data: [passRetake.pass, passRetake.retake],
-                backgroundColor: [green, red]
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } }
-        }
-    });
 </script>
 <?php endif; ?>
+
 
 </body>
 </html>
