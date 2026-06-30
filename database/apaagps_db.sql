@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Jun 27, 2026 at 07:40 AM
+-- Generation Time: Jun 30, 2026 at 12:05 AM
 -- Server version: 8.4.7
 -- PHP Version: 8.3.28
 
@@ -26,80 +26,143 @@ DELIMITER $$
 -- Procedures
 --
 DROP PROCEDURE IF EXISTS `sp_recalc_cgpa`$$
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_recalc_cgpa` (IN `p_student_id` VARCHAR(10))   BEGIN
-    DECLARE v_total_cu DECIMAL(3,2);
-    DECLARE v_total_qp DECIMAL(3,2);
-    DECLARE v_cgpa     DECIMAL(3,2);
-    DECLARE v_year_no  INT;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_recalc_cgpa` (IN `p_student_id` VARCHAR(10), IN `p_sem_no` INT, IN `p_year_no` INT)   BEGIN
+    DECLARE v_total_cu DECIMAL(8,2) DEFAULT 0;
+    DECLARE v_total_qp DECIMAL(8,2) DEFAULT 0;
+    DECLARE v_cgpa     DECIMAL(5,4) DEFAULT 0;
 
-    -- Get the latest year_no for this student from results_tb
-    SELECT IFNULL(MAX(year_no), 1)
-    INTO   v_year_no
-    FROM   results_tb
-    WHERE  student_ID = p_student_id;
-
-    -- Cumulative credit units across ALL semesters
-    SELECT IFNULL(SUM(r.grade_point * m.credit_unit), 0),
-           IFNULL(SUM(m.credit_unit), 0)
-    INTO   v_total_qp, v_total_cu
+    -- Cumulative quality points = SUM across all results up to and
+    -- including this (year_no, sem_no) ordered chronologically.
+    -- A result is "up to this semester" when:
+    --   year_no < p_year_no  (earlier academic year), OR
+    --   year_no = p_year_no AND sem_no <= p_sem_no (same year, earlier/same sem)
+    SELECT
+        IFNULL(SUM(r.grade_point * m.credit_unit), 0),
+        IFNULL(SUM(m.credit_unit), 0)
+    INTO
+        v_total_qp,
+        v_total_cu
     FROM   results_tb r
     JOIN   module_tb  m ON r.module_code = m.module_code
-    WHERE  r.student_ID = p_student_id;
+    WHERE  r.student_ID = p_student_id
+      AND  (
+              r.year_no < p_year_no
+           OR (r.year_no = p_year_no AND r.sem_no <= p_sem_no)
+          );
 
     IF v_total_cu > 0 THEN
         SET v_cgpa = v_total_qp / v_total_cu;
     ELSE
-        SET v_cgpa = 0.00;
+        SET v_cgpa = 0.0000;
     END IF;
 
-    -- Upsert into cgpa_tb
+    -- Upsert: store this semester's running CGPA.
+    -- The unique key uq_cgpa_student_sem_year ensures this updates rather
+    -- than inserting a duplicate row.
     INSERT INTO cgpa_tb (student_ID, sem_no, year_no, total_quality_points, total_credit_units, cgpa_value)
-    VALUES (p_student_id, 0, v_year_no, v_total_qp, v_total_cu, v_cgpa)
+    VALUES (p_student_id, p_sem_no, p_year_no, v_total_qp, v_total_cu, v_cgpa)
     ON DUPLICATE KEY UPDATE
         total_quality_points = v_total_qp,
         total_credit_units   = v_total_cu,
-        cgpa_value           = v_cgpa,
-        year_no              = v_year_no;
+        cgpa_value           = v_cgpa;
+
+    -- IMPORTANT: Changing results for an earlier semester affects the CGPA
+    -- of ALL later semesters too. Recalculate every later semester in order.
+    BEGIN
+        DECLARE done    INT DEFAULT 0;
+        DECLARE v_s_sem INT;
+        DECLARE v_s_yr  INT;
+
+        DECLARE later_sems CURSOR FOR
+            SELECT DISTINCT sem_no, year_no
+            FROM   results_tb
+            WHERE  student_ID = p_student_id
+              AND  (
+                      year_no > p_year_no
+                   OR (year_no = p_year_no AND sem_no > p_sem_no)
+                  )
+            ORDER BY year_no ASC, sem_no ASC;
+
+        DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+        OPEN later_sems;
+        ripple_loop: LOOP
+            FETCH later_sems INTO v_s_sem, v_s_yr;
+            IF done THEN LEAVE ripple_loop; END IF;
+
+            -- Recalculate CGPA for each later semester (not GPA — just the
+            -- cumulative value, since only the current semester's results changed)
+            BEGIN
+                DECLARE v_later_qp DECIMAL(8,2) DEFAULT 0;
+                DECLARE v_later_cu DECIMAL(8,2) DEFAULT 0;
+                DECLARE v_later_cgpa DECIMAL(5,4) DEFAULT 0;
+
+                SELECT
+                    IFNULL(SUM(r.grade_point * m.credit_unit), 0),
+                    IFNULL(SUM(m.credit_unit), 0)
+                INTO
+                    v_later_qp,
+                    v_later_cu
+                FROM   results_tb r
+                JOIN   module_tb  m ON r.module_code = m.module_code
+                WHERE  r.student_ID = p_student_id
+                  AND  (
+                          r.year_no < v_s_yr
+                       OR (r.year_no = v_s_yr AND r.sem_no <= v_s_sem)
+                      );
+
+                IF v_later_cu > 0 THEN
+                    SET v_later_cgpa = v_later_qp / v_later_cu;
+                END IF;
+
+                INSERT INTO cgpa_tb (student_ID, sem_no, year_no, total_quality_points, total_credit_units, cgpa_value)
+                VALUES (p_student_id, v_s_sem, v_s_yr, v_later_qp, v_later_cu, v_later_cgpa)
+                ON DUPLICATE KEY UPDATE
+                    total_quality_points = v_later_qp,
+                    total_credit_units   = v_later_cu,
+                    cgpa_value           = v_later_cgpa;
+            END;
+        END LOOP;
+        CLOSE later_sems;
+    END;
 END$$
 
 DROP PROCEDURE IF EXISTS `sp_recalc_gpa`$$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_recalc_gpa` (IN `p_student_id` VARCHAR(10), IN `p_sem_no` INT, IN `p_year_no` INT)   BEGIN
-    DECLARE v_total_cu   DECIMAL(3,2);
-    DECLARE v_total_qp   DECIMAL(3,2);
-    DECLARE v_gpa        DECIMAL(3,2);
+    DECLARE v_total_cu DECIMAL(8,2) DEFAULT 0;
+    DECLARE v_total_qp DECIMAL(8,2) DEFAULT 0;
+    DECLARE v_gpa      DECIMAL(5,4) DEFAULT 0;
 
-    -- Sum credit units for modules taken this semester/year
-    SELECT IFNULL(SUM(m.credit_unit), 0)
-    INTO   v_total_cu
+    -- Quality Points for this semester = SUM(grade_point × credit_unit)
+    SELECT
+        IFNULL(SUM(r.grade_point * m.credit_unit), 0),
+        IFNULL(SUM(m.credit_unit), 0)
+    INTO
+        v_total_qp,
+        v_total_cu
     FROM   results_tb r
     JOIN   module_tb  m ON r.module_code = m.module_code
     WHERE  r.student_ID = p_student_id
       AND  r.sem_no     = p_sem_no
       AND  r.year_no    = p_year_no;
 
-    -- Sum quality points (grade_point × credit_unit) for same semester/year
-    SELECT IFNULL(SUM(r.grade_point * m.credit_unit), 0)
-    INTO   v_total_qp
-    FROM   results_tb r
-    JOIN   module_tb  m ON r.module_code = m.module_code
-    WHERE  r.student_ID = p_student_id
-      AND  r.sem_no     = p_sem_no
-      AND  r.year_no    = p_year_no;
-
-    -- GPA = total quality points / total credit units
     IF v_total_cu > 0 THEN
         SET v_gpa = v_total_qp / v_total_cu;
     ELSE
-        SET v_gpa = 0.00;
+        SET v_gpa = 0.0000;
     END IF;
 
-    -- Upsert into gpa_tb
+    -- Upsert: update if a GPA row exists for this student+semester, else insert
     INSERT INTO gpa_tb (student_ID, sem_no, total_quality_points, total_credit_units, gpa_value)
     VALUES (p_student_id, p_sem_no, v_total_qp, v_total_cu, v_gpa)
     ON DUPLICATE KEY UPDATE
         total_quality_points = v_total_qp,
         total_credit_units   = v_total_cu,
         gpa_value            = v_gpa;
+
+    -- After GPA is saved, immediately recalculate the running CGPA for
+    -- this student up to and including this semester.
+    CALL sp_recalc_cgpa(p_student_id, p_sem_no, p_year_no);
 END$$
 
 DELIMITER ;
@@ -116,24 +179,27 @@ CREATE TABLE IF NOT EXISTS `cgpa_tb` (
   `student_ID` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
   `sem_no` int NOT NULL,
   `year_no` int NOT NULL,
-  `total_quality_points` decimal(5,2) NOT NULL,
-  `total_credit_units` decimal(4,2) NOT NULL,
-  `cgpa_value` decimal(3,2) NOT NULL,
+  `total_quality_points` decimal(8,2) NOT NULL,
+  `total_credit_units` decimal(8,2) NOT NULL,
+  `cgpa_value` decimal(5,4) NOT NULL,
   PRIMARY KEY (`ID`),
+  UNIQUE KEY `uq_cgpa_student_sem_year` (`student_ID`,`sem_no`,`year_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=40 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `cgpa_tb`
 --
 
 INSERT INTO `cgpa_tb` (`ID`, `student_ID`, `sem_no`, `year_no`, `total_quality_points`, `total_credit_units`, `cgpa_value`) VALUES
-(1, '100-000', 2, 1, 171.00, 42.00, 4.07),
-(2, '100-000', 3, 2, 264.00, 64.00, 4.13),
-(3, '100-000', 4, 2, 352.00, 86.00, 4.09),
-(4, '100-000', 5, 3, 437.00, 99.99, 4.16),
-(5, '100-000', 6, 3, 538.00, 99.99, 4.24),
-(17, '100-001', 0, 1, 9.99, 9.99, 1.00);
+(1, '100-000', 2, 1, 171.00, 42.00, 4.0714),
+(2, '100-000', 3, 2, 264.00, 64.00, 4.1250),
+(3, '100-000', 4, 2, 344.00, 84.00, 4.0952),
+(4, '100-000', 5, 3, 429.00, 103.00, 4.1650),
+(5, '100-000', 6, 3, 530.00, 125.00, 4.2400),
+(17, '100-001', 0, 1, 9.99, 9.99, 1.0000),
+(18, '100-000', 1, 1, 73.50, 17.00, 4.3235),
+(39, '100-001', 1, 1, 56.00, 17.00, 3.2941);
 
 -- --------------------------------------------------------
 
@@ -166,45 +232,27 @@ DROP TABLE IF EXISTS `gpa_tb`;
 CREATE TABLE IF NOT EXISTS `gpa_tb` (
   `ID` int NOT NULL AUTO_INCREMENT,
   `student_ID` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `total_quality_points` decimal(4,2) NOT NULL,
-  `total_credit_units` decimal(4,2) NOT NULL,
-  `gpa_value` decimal(3,2) NOT NULL,
+  `total_quality_points` decimal(8,2) NOT NULL,
+  `total_credit_units` decimal(8,2) NOT NULL,
+  `gpa_value` decimal(5,4) NOT NULL,
   `sem_no` int NOT NULL,
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_gpa_student_sem` (`student_ID`,`sem_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `gpa_tb`
 --
 
 INSERT INTO `gpa_tb` (`ID`, `student_ID`, `total_quality_points`, `total_credit_units`, `gpa_value`, `sem_no`) VALUES
-(1, '100-000', 73.50, 17.00, 4.32, 1),
-(2, '100-000', 97.50, 25.00, 3.90, 2),
-(3, '100-000', 93.00, 22.00, 4.23, 3),
-(4, '100-000', 88.00, 22.00, 4.00, 4),
-(5, '100-000', 85.00, 19.00, 4.47, 5),
-(6, '100-000', 99.99, 22.00, 4.59, 6),
-(7, '100-001', 56.00, 17.00, 3.29, 1);
-
---
--- Triggers `gpa_tb`
---
-DROP TRIGGER IF EXISTS `trg_gpa_after_insert_cgpa`;
-DELIMITER $$
-CREATE TRIGGER `trg_gpa_after_insert_cgpa` AFTER INSERT ON `gpa_tb` FOR EACH ROW BEGIN
-    CALL sp_recalc_cgpa(NEW.student_ID);
-END
-$$
-DELIMITER ;
-DROP TRIGGER IF EXISTS `trg_gpa_after_update_cgpa`;
-DELIMITER $$
-CREATE TRIGGER `trg_gpa_after_update_cgpa` AFTER UPDATE ON `gpa_tb` FOR EACH ROW BEGIN
-    CALL sp_recalc_cgpa(NEW.student_ID);
-END
-$$
-DELIMITER ;
+(1, '100-000', 73.50, 17.00, 4.3235, 1),
+(2, '100-000', 97.50, 25.00, 3.9000, 2),
+(3, '100-000', 93.00, 22.00, 4.2273, 3),
+(4, '100-000', 80.00, 20.00, 4.0000, 4),
+(5, '100-000', 85.00, 19.00, 4.4737, 5),
+(6, '100-000', 101.00, 22.00, 4.5909, 6),
+(7, '100-001', 56.00, 17.00, 3.2941, 1);
 
 -- --------------------------------------------------------
 
@@ -287,6 +335,30 @@ CREATE TABLE IF NOT EXISTS `lecturer_tb` (
 
 INSERT INTO `lecturer_tb` (`ID`, `lecturer_ID`, `lecturer_name`, `lecturer_email`, `lecturer_password`) VALUES
 (1, '220450', 'George David', 'gdavid@cavendish.ac.ug', '123');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `module_report_tb`
+--
+
+DROP TABLE IF EXISTS `module_report_tb`;
+CREATE TABLE IF NOT EXISTS `module_report_tb` (
+  `report_ID` int NOT NULL AUTO_INCREMENT,
+  `student_ID` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `module_code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `lecturer_ID` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `category` enum('CAT1','CAT2','Exam') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `message` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` enum('Submitted','Reviewing','Resolved','Rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Submitted',
+  `lecturer_note` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`report_ID`),
+  KEY `student_ID` (`student_ID`),
+  KEY `module_code` (`module_code`),
+  KEY `lecturer_ID` (`lecturer_ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -472,6 +544,32 @@ INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`
 (39, 'BBA116', '100-001', 1, 1, 15, 15, 39, 3.50, 'C+', 69, 'Pass', '2026-06-22 06:06:01'),
 (40, 'BJC110', '100-001', 1, 1, 16, 14, 41, 4.00, 'B', 71, 'Pass', '2026-06-22 06:06:01');
 
+--
+-- Triggers `results_tb`
+--
+DROP TRIGGER IF EXISTS `trg_results_after_insert`;
+DELIMITER $$
+CREATE TRIGGER `trg_results_after_insert` AFTER INSERT ON `results_tb` FOR EACH ROW BEGIN
+    CALL sp_recalc_gpa(NEW.student_ID, NEW.sem_no, NEW.year_no);
+END
+$$
+DELIMITER ;
+DROP TRIGGER IF EXISTS `trg_results_after_update`;
+DELIMITER $$
+CREATE TRIGGER `trg_results_after_update` AFTER UPDATE ON `results_tb` FOR EACH ROW BEGIN
+    -- If the mark/grade changed, recalculate for the current semester.
+    -- The procedure itself handles rippling the CGPA change forward.
+    IF NEW.grade_point <> OLD.grade_point OR NEW.sem_no <> OLD.sem_no OR NEW.year_no <> OLD.year_no THEN
+        CALL sp_recalc_gpa(NEW.student_ID, NEW.sem_no, NEW.year_no);
+        -- If moved to a different semester, also recalc the old one
+        IF NEW.sem_no <> OLD.sem_no OR NEW.year_no <> OLD.year_no THEN
+            CALL sp_recalc_gpa(OLD.student_ID, OLD.sem_no, OLD.year_no);
+        END IF;
+    END IF;
+END
+$$
+DELIMITER ;
+
 -- --------------------------------------------------------
 
 --
@@ -598,6 +696,14 @@ ALTER TABLE `gpa_tb`
 ALTER TABLE `lecturer_module_tb`
   ADD CONSTRAINT `fk_lecturer_module_lecturer` FOREIGN KEY (`lecturer_ID`) REFERENCES `lecturer_tb` (`lecturer_ID`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_lecturer_module_module` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `module_report_tb`
+--
+ALTER TABLE `module_report_tb`
+  ADD CONSTRAINT `fk_report_lecturer` FOREIGN KEY (`lecturer_ID`) REFERENCES `lecturer_tb` (`lecturer_ID`) ON DELETE SET NULL,
+  ADD CONSTRAINT `fk_report_module` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_report_student` FOREIGN KEY (`student_ID`) REFERENCES `student_tb` (`student_ID`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `module_tb`
