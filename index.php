@@ -121,6 +121,10 @@
                     Having trouble signing in? Contact the IT helpdesk at your campus.
                 </p>
 
+                <p class="staff-link" style="margin-top:1rem;">
+                    Don't have an account? <a href="StudentRegister.php">Register here</a>
+                </p>
+
                 <p class="staff-link">Are you a lecturer? <a href="lecturerLoginInterface.php">Go to the lecturer portal</a></p>
             </div>
         </section>

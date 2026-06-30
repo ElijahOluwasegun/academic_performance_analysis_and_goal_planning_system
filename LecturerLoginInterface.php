@@ -197,6 +197,7 @@
             </form>
 
             <p class="footnote">Having trouble signing in? Contact the IT helpdesk.</p>
+            <p class="student-link" style="margin-top:1rem;">Don't have an account? <a href="LecturerRegister.php">Register here</a></p>
             <p class="student-link">Are you a student? <a href="index.php">Go to the student portal</a></p>
         </div>
     </main>
