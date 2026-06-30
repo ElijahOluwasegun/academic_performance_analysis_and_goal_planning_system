@@ -152,7 +152,8 @@ foreach ($grouped as $year => $sems) {
 }
  */
 // ─── Grade pill class ─────────────────────────────────────────────────────────
-function pillClass(string $g): string {
+function pillClass(?string $g): string {
+    if ($g === null || $g === '') return 'pill-f';
     return match(true) {
         $g === 'A'               => 'pill-a',
         str_starts_with($g, 'B') => 'pill-b',
@@ -160,6 +161,34 @@ function pillClass(string $g): string {
         str_starts_with($g, 'D') => 'pill-d',
         default                  => 'pill-f',
     };
+}
+
+// ─── Null-safe display helpers ────────────────────────────────────────────────
+function fmtScore($v): string  { return ($v === null || $v === '') ? '—' : (int)$v . '%'; }
+function fmtMark($v): string   { return ($v === null || $v === '') ? '—' : (string)(int)$v; }
+function fmtGrade(?string $v): string { return ($v === null || $v === '') ? '—' : htmlspecialchars($v); }
+function fmtPoint($v): string  { return ($v === null || $v === '') ? '—' : htmlspecialchars((string)$v); }
+
+// A semester is complete when every module row has a final total and letter grade
+function semComplete(array $rows): bool {
+    foreach ($rows as $r) {
+        if ($r['final_total'] === null || $r['final_total'] === ''
+            || $r['letter_grade'] === null || $r['letter_grade'] === '') {
+            return false;
+        }
+    }
+    return true;
+}
+
+// ─── Print eligibility: student must have reached Year 2 Sem 2 or beyond ─────
+$canPrint = false;
+foreach ($grouped as $_yr => $_sms) {
+    foreach ($_sms as $_sm => $_) {
+        if ((int)$_yr > 2 || ((int)$_yr === 2 && (int)$_sm >= 2)) {
+            $canPrint = true;
+            break 2;
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -240,7 +269,7 @@ function pillClass(string $g): string {
         }
         .tab-btn.active {
             color: #fff;
-            border-bottom-color: #ffffff;
+            border-bottom-color: #c9a227;
         }
 
         /* ── Page content ── */
@@ -420,7 +449,9 @@ function pillClass(string $g): string {
         /* ── Print button ── */
         .print-row {
             display: flex;
-            justify-content: flex-end;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: .5rem;
             margin-top: 1.5rem;
             padding-bottom: 2rem;
         }
@@ -434,10 +465,85 @@ function pillClass(string $g): string {
             cursor: pointer;
             color: #fff;
         }
-        .btn-print:hover { background: #d0d0d0; }
+        .btn-print:hover:not(:disabled) { background: #d0d0d0; }
+        .btn-print:disabled {
+            background: #b0b5c0;
+            border-color: #b0b5c0;
+            cursor: not-allowed;
+            opacity: .7;
+        }
+        .print-lock-note {
+            font-size: .78rem;
+            color: #7b8294;
+            text-align: right;
+        }
 
         /* ── Empty state ── */
         .empty { text-align: center; padding: 2.5rem; color: #888; }
+
+        /* ── Report Module modal ── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(13, 23, 48, 0.55);
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            z-index: 100;
+        }
+        .modal-overlay.visible { display: flex; }
+
+        .modal-card {
+            background: #fff;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 26rem;
+            padding: 1.4rem 1.5rem 1.6rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+        }
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: .4rem;
+        }
+        .modal-title { font-size: 1.05rem; font-weight: 700; color: #16213f; }
+        .modal-module { font-size: .82rem; color: #555; margin-bottom: 1.1rem; }
+        .modal-close {
+            border: none; background: none; font-size: 1.3rem; line-height: 1;
+            cursor: pointer; color: #888; padding: 0;
+        }
+        .modal-close:hover { color: #333; }
+
+        .modal-field { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1rem; }
+        .modal-field label { font-size: .82rem; font-weight: 600; color: #2b3550; }
+        .modal-field select,
+        .modal-field textarea {
+            padding: .55rem .7rem;
+            border: 1.5px solid #c9cdda;
+            border-radius: 6px;
+            font-family: 'Inter', sans-serif;
+            font-size: .88rem;
+            resize: vertical;
+        }
+        .modal-field textarea { min-height: 5.5rem; }
+
+        .modal-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: .4rem; }
+        .modal-btn-cancel {
+            padding: .5rem 1.1rem; border: 1px solid #ccc; border-radius: 20px;
+            background: #f5f5f5; font-size: .85rem; cursor: pointer;
+        }
+        .modal-btn-submit {
+            padding: .5rem 1.3rem; border: none; border-radius: 20px;
+            background: #213769; color: #fff; font-weight: 600; font-size: .85rem; cursor: pointer;
+        }
+        .modal-btn-submit:hover { background: #121e38; }
+        .modal-btn-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+        .modal-status-msg { font-size: .82rem; margin-bottom: .9rem; padding: .55rem .75rem; border-radius: 6px; display: none; }
+        .modal-status-msg.success { display: block; background: #e8f6ef; border: 1px solid #a7e0c4; color: #0f6b41; }
+        .modal-status-msg.error   { display: block; background: #fdecec; border: 1px solid #f3b9b9; color: #9b2c2c; }
 
         /* Note: printing now happens on the dedicated PrintStatement.php page,
            opened by the Print button below, so no @media print override is
@@ -445,6 +551,42 @@ function pillClass(string $g): string {
     </style>
 </head>
 <body>
+
+<!-- ── Report Module Modal ── -->
+<div class="modal-overlay" id="reportModal">
+    <div class="modal-card">
+        <div class="modal-head">
+            <div class="modal-title">Report an issue</div>
+            <button class="modal-close" onclick="closeReportModal()" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-module" id="reportModalModuleLabel"></div>
+
+        <div class="modal-status-msg" id="reportModalStatus"></div>
+
+        <form id="reportModalForm">
+            <input type="hidden" id="reportModuleCode" name="module_code">
+
+            <div class="modal-field">
+                <label for="reportCategory">What's this about?</label>
+                <select id="reportCategory" name="category" required>
+                    <option value="CAT1">CAT 1</option>
+                    <option value="CAT2">CAT 2</option>
+                    <option value="Exam">Exam mark</option>
+                </select>
+            </div>
+
+            <div class="modal-field">
+                <label for="reportMessage">Describe the issue</label>
+                <textarea id="reportMessage" name="message" placeholder="e.g. My CAT 2 mark seems lower than what I scored on the marked script I was shown in class." required></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="modal-btn-cancel" onclick="closeReportModal()">Cancel</button>
+                <button type="submit" class="modal-btn-submit" id="reportSubmitBtn">Submit report</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <header class="site-header">
     <img class="crest" src="images/cu_logo.jpg" alt="Cavendish University crest">
@@ -459,6 +601,7 @@ function pillClass(string $g): string {
     <span class="tab-btn active">Results</span>
     <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
     <a class="tab-btn" href="GoalPlanning.php">Goal Planning</a>
+    <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 
 <main class="page-wrap">
@@ -500,16 +643,18 @@ function pillClass(string $g): string {
                         <td><?= htmlspecialchars($r["module_code"]) ?></td>
                         <td><?= htmlspecialchars($r["module_name"]) ?></td>
                         <td>
-                            <span class="pill <?= pillClass($r['letter_grade']) ?>">
-                                <?= htmlspecialchars($r["letter_grade"]) ?>
-                            </span>
+                            <?php if ($r['letter_grade'] !== null && $r['letter_grade'] !== ''): ?>
+                                <span class="pill <?= pillClass($r['letter_grade']) ?>">
+                                    <?= htmlspecialchars($r["letter_grade"]) ?>
+                                </span>
+                            <?php else: ?>—<?php endif; ?>
                         </td>
-                        <td><?= (int)$r["final_total"] ?>%</td>
+                        <td><?= fmtScore($r["final_total"]) ?></td>
                         <td><?= htmlspecialchars($r["credit_unit"]) ?></td>
-                        <td><?= htmlspecialchars($r["grade_point"]) ?></td>
+                        <td><?= fmtPoint($r["grade_point"]) ?></td>
                         <td>
                             <button class="btn-report"
-                                onclick="reportModule('<?= htmlspecialchars($r['module_code']) ?>')">
+                                onclick="reportModule('<?= htmlspecialchars($r['module_code']) ?>', '<?= htmlspecialchars(addslashes($r['module_name'])) ?>')">
                                 Report Module
                             </button>
                         </td>
@@ -518,25 +663,27 @@ function pillClass(string $g): string {
                 </tbody>
             </table>
 
+            <?php
+                $latestComplete = semComplete($latestRows);
+                $latestKey      = "{$latestYear}-{$latestSem}";
+                $latestCgpa     = $cgpaMap[$latestKey] ?? null;
+            ?>
             <div class="sem-footer">
                 <div class="gpa-group">
                     <span class="badge-label">GPA</span>
                     <span class="badge-value">
-                        <?= isset($gpaMap[(int)$latestSem])
+                        <?= ($latestComplete && isset($gpaMap[(int)$latestSem]))
                             ? number_format($gpaMap[(int)$latestSem]["gpa_value"], 2)
                             : '—' ?>
                     </span>
                 </div>
 
-                <?php
-                    $latestKey = "{$latestYear}-{$latestSem}";
-                    $latestCgpa = $cgpaMap[$latestKey] ?? null;
-                ?>
                 <?php if (!((int)$latestYear === 1 && (int)$latestSem === 1)) : ?>
                 <div class="gpa-group">
                     <span class="badge-label">CGPA</span>
                     <span class="badge-value">
-                        <?= $latestCgpa ? number_format($latestCgpa["cgpa_value"], 2) : '—' ?>
+                        <?= ($latestComplete && $latestCgpa)
+                            ? number_format($latestCgpa["cgpa_value"], 2) : '—' ?>
                     </span>
                 </div>
                 <?php endif; ?>
@@ -571,10 +718,10 @@ function pillClass(string $g): string {
                     <tr>
                         <td><?= htmlspecialchars($r["module_code"]) ?></td>
                         <td><?= htmlspecialchars($r["module_name"]) ?></td>
-                        <td><?= (int)$r["cat1_mk"] ?></td>
-                        <td><?= (int)$r["cat2_mk"] ?></td>
-                        <td><?= (int)$r["exam_mk"] ?></td>
-                        <td><?= (int)$r["final_total"] ?>%</td>
+                        <td><?= fmtMark($r["cat1_mk"]) ?></td>
+                        <td><?= fmtMark($r["cat2_mk"]) ?></td>
+                        <td><?= fmtMark($r["exam_mk"]) ?></td>
+                        <td><?= fmtScore($r["final_total"]) ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -608,16 +755,18 @@ function pillClass(string $g): string {
                                 <td><?= htmlspecialchars($r["module_code"]) ?></td>
                                 <td><?= htmlspecialchars($r["module_name"]) ?></td>
                                 <td>
-                                    <span class="pill <?= pillClass($r['letter_grade']) ?>">
-                                        <?= htmlspecialchars($r["letter_grade"]) ?>
-                                    </span>
+                                    <?php if ($r['letter_grade'] !== null && $r['letter_grade'] !== ''): ?>
+                                        <span class="pill <?= pillClass($r['letter_grade']) ?>">
+                                            <?= htmlspecialchars($r["letter_grade"]) ?>
+                                        </span>
+                                    <?php else: ?>—<?php endif; ?>
                                 </td>
-                                <td><?= (int)$r["final_total"] ?>%</td>
+                                <td><?= fmtScore($r["final_total"]) ?></td>
                                 <td><?= htmlspecialchars($r["credit_unit"]) ?></td>
-                                <td><?= htmlspecialchars($r["grade_point"]) ?></td>
+                                <td><?= fmtPoint($r["grade_point"]) ?></td>
                                 <td>
                                     <button class="btn-report"
-                                        onclick="reportModule('<?= htmlspecialchars($r['module_code']) ?>')">
+                                        onclick="reportModule('<?= htmlspecialchars($r['module_code']) ?>', '<?= htmlspecialchars(addslashes($r['module_name'])) ?>')">
                                         Report Module
                                     </button>
                                 </td>
@@ -627,10 +776,11 @@ function pillClass(string $g): string {
                     </table>
 
                     <?php
-                        $blockKey     = "{$block['year']}-{$block['sem']}";
-                        $blockCgpa    = $cgpaMap[$blockKey] ?? null;
-                        $showCgpaHere = !((int)$block["year"] === 1 && (int)$block["sem"] === 1);
-                        $hasGpaHere   = isset($gpaMap[(int)$block["sem"]]);
+                        $blockKey      = "{$block['year']}-{$block['sem']}";
+                        $blockCgpa     = $cgpaMap[$blockKey] ?? null;
+                        $showCgpaHere  = !((int)$block["year"] === 1 && (int)$block["sem"] === 1);
+                        $hasGpaHere    = isset($gpaMap[(int)$block["sem"]]);
+                        $blockComplete = semComplete($block["rows"]);
                     ?>
                     <?php if ($hasGpaHere || ($showCgpaHere && $blockCgpa)): ?>
                     <div class="sem-footer">
@@ -638,16 +788,20 @@ function pillClass(string $g): string {
                         <div class="gpa-group">
                             <span class="badge-label">GPA</span>
                             <span class="badge-value">
-                                <?= number_format($gpaMap[(int)$block["sem"]]["gpa_value"], 2) ?>
+                                <?= ($blockComplete)
+                                    ? number_format($gpaMap[(int)$block["sem"]]["gpa_value"], 2)
+                                    : '—' ?>
                             </span>
                         </div>
-                    <?php endif; ?>
+                        <?php endif; ?>
 
-                    <?php if ($showCgpaHere && $blockCgpa): ?>
+                        <?php if ($showCgpaHere && $blockCgpa): ?>
                         <div class="gpa-group">
                             <span class="badge-label">CGPA</span>
                             <span class="badge-value">
-                                <?= number_format($blockCgpa["cgpa_value"], 2) ?>
+                                <?= ($blockComplete)
+                                    ? number_format($blockCgpa["cgpa_value"], 2)
+                                    : '—' ?>
                             </span>
                         </div>
                         <?php endif; ?>
@@ -662,7 +816,14 @@ function pillClass(string $g): string {
     <?php endif; ?>
 
     <div class="print-row">
-        <button class="btn-print" onclick="window.open('PrintStatement.php', '_blank')">Print</button>
+        <?php if ($canPrint): ?>
+            <button class="btn-print" onclick="window.open('PrintStatement.php', '_blank')">Print</button>
+        <?php else: ?>
+            <button class="btn-print" disabled>Print</button>
+            <p class="print-lock-note">
+                Printing is available once you have completed Year 2, Semester 2.
+            </p>
+        <?php endif; ?>
     </div>
 
 </main>
@@ -684,9 +845,61 @@ function pillClass(string $g): string {
         btn.classList.toggle('active', open);
     }
 
-    function reportModule(code) {
-        alert('Report submitted for module: ' + code);
+    function reportModule(code, name) {
+        document.getElementById('reportModalModuleLabel').textContent = name ? `${name} (${code})` : code;
+        document.getElementById('reportModalStatus').className = 'modal-status-msg';
+        document.getElementById('reportModalStatus').textContent = '';
+        document.getElementById('reportModalForm').reset();
+        document.getElementById('reportModuleCode').value = code;
+        document.getElementById('reportModal').classList.add('visible');
     }
+
+    function closeReportModal() {
+        document.getElementById('reportModal').classList.remove('visible');
+    }
+
+    document.getElementById('reportModalForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const statusEl = document.getElementById('reportModalStatus');
+        const submitBtn = document.getElementById('reportSubmitBtn');
+        const formData = new FormData(this);
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting…';
+        statusEl.className = 'modal-status-msg';
+        statusEl.textContent = '';
+
+        try {
+            const response = await fetch('SubmitModuleReport.php', {
+                method: 'POST',
+                body: formData,
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                statusEl.className = 'modal-status-msg success';
+                statusEl.textContent = 'Report submitted. You can track its progress under "My Reports".';
+                submitBtn.textContent = 'Submitted';
+                setTimeout(closeReportModal, 1800);
+            } else {
+                statusEl.className = 'modal-status-msg error';
+                statusEl.textContent = result.error || 'Something went wrong. Please try again.';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit report';
+            }
+        } catch (err) {
+            statusEl.className = 'modal-status-msg error';
+            statusEl.textContent = 'Could not reach the server. Please try again.';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit report';
+        }
+    });
+
+    // Close modal on backdrop click (but not when clicking inside the card)
+    document.getElementById('reportModal').addEventListener('click', function (e) {
+        if (e.target === this) closeReportModal();
+    });
 </script>
 
 </body>
