@@ -3,7 +3,7 @@ session_start();
 
 // Allow access if they are logging in via POST OR if they already have an active session
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && empty($_SESSION["student_ID"])) {
-    header("Location: index.html");
+    header("Location: index.php");
     exit();
 }
 
@@ -16,7 +16,7 @@ $db_pass = "";       // ← change if needed
 
 // ─── Require an active session (this page is reached via the navbar, not a login form) ──
 if (empty($_SESSION["student_ID"])) {
-    header("Location: index.html?error=session_expired");
+    header("Location: index.php?error=session_expired");
     exit();
 }
 
@@ -47,7 +47,7 @@ $stmtS->execute([$studentID]);
 $student = $stmtS->fetch();
 
 if (!$student) {
-    header("Location: index.html?error=invalid_session");
+    header("Location: index.php?error=invalid_session");
     exit();
 }
 
@@ -468,14 +468,14 @@ $hasData = !empty($allResults);
         }
         .close-call-card {
             background: #fff;
-            border: 1px solid #d8b56a;
-            border-left: 4px solid #c9a227;
+            border: 1px solid #000;
+            border-left: 4px solid #16213f;
             border-radius: 6px;
             padding: .85rem 1rem;
         }
         .close-call-card .cc-module { font-weight: 700; font-size: .9rem; color: #16213f; margin-bottom: .2rem; }
         .close-call-card .cc-detail { font-size: .82rem; color: #444; }
-        .close-call-card .cc-marks { font-weight: 700; color: #92400e; }
+        .close-call-card .cc-marks { font-weight: 700; color: #0d1730; }
 
         /* ── Goal comparison strip ── */
         .goal-strip { display: flex; flex-direction: column; gap: .6rem; }
@@ -522,6 +522,7 @@ $hasData = !empty($allResults);
     <a class="tab-btn" href="ExamResultInterface.php">Results</a>
     <span class="tab-btn active">Analysis</span>
     <a class="tab-btn" href="GoalPlanning.php">Goal Planning</a>
+    <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 
 <main class="page-wrap">

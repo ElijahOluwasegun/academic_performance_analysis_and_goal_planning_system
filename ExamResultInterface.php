@@ -8,18 +8,55 @@ $db_name = "apaagps_db";
 $db_user = "root";   // ← change if needed
 $db_pass = "";       // ← change if needed
 
-// ─── Only handle POST requests ────────────────────────────────────────────────
-if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-    header("Location: index.html");
+// ─── POST = login attempt → authenticate, set session, redirect (PRG) ─────────
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    $email    = trim($_POST["Email"]    ?? "");
+    $password = trim($_POST["Password"] ?? "");
+
+    if (empty($email) || empty($password)) {
+        header("Location: index.php?error=empty_fields");
+        exit();
+    }
+
+    try {
+        $dsn = "mysql:host={$db_host};port={$db_port};dbname={$db_name};charset=utf8mb4";
+        $pdoAuth = new PDO($dsn, $db_user, $db_pass, [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+        ]);
+    } catch (PDOException $e) {
+        die("Database connection failed: " . $e->getMessage());
+    }
+
+    $stmt = $pdoAuth->prepare("
+        SELECT s.student_ID, s.student_name, s.student_email, s.student_password,
+               s.program_code, p.program_name, p.program_faculty
+        FROM   student_tb s
+        JOIN   program_tb p ON s.program_code = p.program_code
+        WHERE  s.student_email = ?
+        LIMIT  1
+    ");
+    $stmt->execute([$email]);
+    $authStudent = $stmt->fetch();
+
+    if (!$authStudent || $password !== $authStudent["student_password"]) {
+        header("Location: index.php?error=invalid_credentials");
+        exit();
+    }
+
+    $_SESSION["student_ID"]   = $authStudent["student_ID"];
+    $_SESSION["student_name"] = $authStudent["student_name"];
+
+    // PRG: redirect to GET so the Results tab works as a normal link from any
+    // other page, and the back button never triggers a resubmission warning.
+    header("Location: ExamResultInterface.php");
     exit();
 }
 
-// ─── Sanitize inputs ──────────────────────────────────────────────────────────
-$email    = trim($_POST["Email"]    ?? "");
-$password = trim($_POST["Password"] ?? "");
-
-if (empty($email) || empty($password)) {
-    header("Location: index.html?error=empty_fields");
+// ─── GET = display results (requires active session) ─────────────────────────
+if (empty($_SESSION["student_ID"])) {
+    header("Location: index.php?error=session_expired");
     exit();
 }
 
@@ -35,30 +72,22 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
-// ─── Authenticate student ─────────────────────────────────────────────────────
-$stmt = $pdo->prepare("
-    SELECT s.student_ID,
-           s.student_name,
-           s.student_email,
-           s.student_password,
-           s.program_code,
-           p.program_name,
-           p.program_faculty
+// ─── Re-fetch student info using the session ID ───────────────────────────────
+$stmtS = $pdo->prepare("
+    SELECT s.student_ID, s.student_name, s.program_code,
+           p.program_name, p.program_faculty
     FROM   student_tb s
     JOIN   program_tb p ON s.program_code = p.program_code
-    WHERE  s.student_email = ?
+    WHERE  s.student_ID = ?
     LIMIT  1
 ");
-$stmt->execute([$email]);
-$student = $stmt->fetch();
+$stmtS->execute([$_SESSION["student_ID"]]);
+$student = $stmtS->fetch();
 
-if (!$student || $password !== $student["student_password"]) {
-    header("Location: index.html?error=invalid_credentials");
+if (!$student) {
+    header("Location: index.php?error=invalid_session");
     exit();
 }
-
-$_SESSION["student_ID"]   = $student["student_ID"];
-$_SESSION["student_name"] = $student["student_name"];
 
 // ─── Fetch all results joined with module names ───────────────────────────────
 $stmtR = $pdo->prepare("
@@ -427,7 +456,7 @@ foreach ($grouped as $_yr => $_sms) {
             transition: background .15s;
         }
         .btn-action:hover,
-        .btn-action.active { background: #ddd; }
+        .btn-action.active { background: #000000;  }
 
         /* ── Breakdown table (hidden by default) ── */
         .breakdown-wrap {
