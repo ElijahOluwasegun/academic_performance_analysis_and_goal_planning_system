@@ -28,7 +28,7 @@ define('ANTHROPIC_API_KEY', ''); // ← paste your key here when you have one
 // set by ExamResultInterface.php at login, not a fresh POST.
 // ════════════════════════════════════════════════════════════════════════
 if (empty($_SESSION["student_ID"])) {
-    header("Location: index.html?error=session_expired");
+    header("Location: index.php?error=session_expired");
     exit();
 }
 $studentID = $_SESSION["student_ID"];
@@ -58,7 +58,7 @@ $stmtS->execute([$studentID]);
 $student = $stmtS->fetch();
 
 if (!$student) {
-    header("Location: index.html?error=invalid_session");
+    header("Location: index.php?error=invalid_session");
     exit();
 }
 
@@ -99,8 +99,8 @@ $pastResults = $stmtR->fetchAll();
 $hasResults = !empty($pastResults);
 
 // ─── Determine the student's latest completed (year, sem) ────────────────────
-$latestYear = 1;
-$latestSem  = 1;
+$latestYear = 0;
+$latestSem  = 0; // global sequential sem_no matching module_tb (Y1S1=1, Y1S2=2, Y2S1=3 …)
 if ($hasResults) {
     foreach ($pastResults as $r) {
         if ((int)$r["year_no"] > $latestYear ||
@@ -111,14 +111,15 @@ if ($hasResults) {
     }
 }
 
-// ─── Compute "next semester" (sem 1 → 2, sem 2 → next year sem 1) ────────────
-if ($latestSem === 1) {
-    $nextYear = $latestYear;
-    $nextSem  = 2;
-} else {
-    $nextYear = $latestYear + 1;
-    $nextSem  = 1;
-}
+// ─── Compute next semester ────────────────────────────────────────────────────
+// module_tb uses a global sem_no (1-6 across all three years), not a per-year
+// 1/2. Simply incrementing gives the correct row to query.
+$nextSemGlobal = $latestSem + 1;
+$nextYear      = max(1, (int)ceil($nextSemGlobal / 2));
+$nextSem       = (($nextSemGlobal - 1) % 2) + 1; // 1 or 2 within the year (display only)
+
+// Per-year label for "Based on results through Year X, Sem Y" display
+$latestSemDisplay = $latestSem > 0 ? (($latestSem - 1) % 2) + 1 : 1;
 
 // ════════════════════════════════════════════════════════════════════════
 // FETCH NEXT SEMESTER'S MODULES (from module_tb, scoped to the student's program)
@@ -131,7 +132,7 @@ $stmtNext = $pdo->prepare("
       AND  sem_no  = ?
     ORDER  BY module_code ASC
 ");
-$stmtNext->execute([$student["program_code"], $nextYear, $nextSem]);
+$stmtNext->execute([$student["program_code"], $nextYear, $nextSemGlobal]);
 $nextModules = $stmtNext->fetchAll();
 
 // ════════════════════════════════════════════════════════════════════════
@@ -656,8 +657,9 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
 
 <nav class="tab-nav">
     <a class="tab-btn" href="ExamResultInterface.php">Results</a>
-    <a class="tab-btn" href="Analysis.php">Analysis</a>
+    <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
     <span class="tab-btn active">Goal Planning</span>
+    <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 
 <main class="page-wrap">
@@ -727,7 +729,7 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
     <div class="card">
         <div class="card-header">
             Your Performance So Far
-            <span class="card-sub">Based on results through Year <?= $latestYear ?>, Sem <?= $latestSem ?></span>
+            <span class="card-sub">Based on results through Year <?= $latestYear ?>, Sem <?= $latestSemDisplay ?></span>
         </div>
         <div class="card-body">
             <div class="stat-row">
