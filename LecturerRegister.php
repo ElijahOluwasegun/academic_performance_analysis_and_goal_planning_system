@@ -259,6 +259,8 @@
                             'email_taken'       => 'An account with that email already exists.',
                             'id_taken'          => 'That staff ID is already registered.',
                             'password_mismatch' => 'Passwords do not match. Please try again.',
+                            'password_short'    => 'Password must be at least 8 characters.',
+                            'invalid_email'     => 'Please enter a valid staff email address.',
                         ];
                         echo htmlspecialchars($errors[$_GET['error']] ?? 'Something went wrong. Please try again.');
                     ?>

@@ -160,7 +160,11 @@
             <h2 class="login-title">Lecturer Login</h2>
             <p class="login-sub">Sign in to upload exam results for the modules assigned to you.</p>
 
-            <?php if (isset($_GET['error']) && $_GET['error'] === 'invalid_credentials'): ?>
+            <?php if (isset($_GET['registered'])): ?>
+                <div class="alert" style="background:#e8f6ef;border-color:#a7e0c4;color:#0f6b41;" role="alert">
+                    Account created successfully. You can now sign in.
+                </div>
+            <?php elseif (isset($_GET['error']) && $_GET['error'] === 'invalid_credentials'): ?>
                 <div class="alert" role="alert">Invalid email or password. Please try again.</div>
             <?php elseif (isset($_GET['error']) && $_GET['error'] === 'session_expired'): ?>
                 <div class="alert" role="alert">Your session expired. Please log in again.</div>
