@@ -48,8 +48,8 @@ if (empty($_SESSION["lecturer_ID"]) && isset($_POST["Email"], $_POST["Password"]
     $stmtAuth->execute([$loginEmail]);
     $lecturerAuth = $stmtAuth->fetch();
 
-    if (!$lecturerAuth || $loginPassword !== $lecturerAuth["lecturer_password"]) {
-        header("Location: lecturer_login.php?error=invalid_credentials");
+    if (!$lecturerAuth || !password_verify($loginPassword, $lecturerAuth["lecturer_password"])) {
+        header("Location: LecturerLoginInterface.php?error=invalid_credentials");
         exit();
     }
 
@@ -58,7 +58,7 @@ if (empty($_SESSION["lecturer_ID"]) && isset($_POST["Email"], $_POST["Password"]
 }
 
 if (empty($_SESSION["lecturer_ID"])) {
-    header("Location: lecturer_login.php?error=session_expired");
+    header("Location: LecturerLoginInterface.php?error=session_expired");
     exit();
 }
 $lecturerID = $_SESSION["lecturer_ID"];
@@ -81,7 +81,7 @@ $stmtL->execute([$lecturerID]);
 $lecturer = $stmtL->fetch();
 
 if (!$lecturer) {
-    header("Location: lecturer_login.php?error=session_expired");
+    header("Location: LecturerLoginInterface.php?error=session_expired");
     exit();
 }
 
@@ -279,12 +279,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_FILES["result_file"])) {
                     $rowsInserted++;
                 }
 
-                // Recalculate GPA for this student/semester. This uses your
-                // existing sp_recalc_gpa procedure, which upserts into gpa_tb;
-                // the existing trg_gpa_after_insert_cgpa / _update_cgpa triggers
-                // then automatically recalculate cgpa_tb for this student.
-                $pdo->prepare("CALL sp_recalc_gpa(?, ?, ?)")
-                    ->execute([$studentID, $module["sem_no"], $module["year_no"]]);
+                // GPA and CGPA are now recalculated automatically by the
+                // trg_results_after_insert / trg_results_after_update triggers
+                // on results_tb (added in gpa_cgpa_automation_migration.sql).
+                // No manual CALL needed here.
             }
 
             $pdo->commit();
@@ -398,6 +396,16 @@ $recentUploads = $stmtRecent->fetchAll();
         .skipped-list div { padding: 0.15rem 0; }
 
         .empty { text-align: center; padding: 1.5rem; color: #888; font-size: 0.88rem; }
+
+        .tab-nav { display: flex; gap: 0.35rem; padding: 0 1.5rem; background: #16213f; border-bottom: 1px solid #0d1730; }
+        .tab-btn {
+            padding: .8rem 1.1rem .7rem; border: none; background: transparent;
+            font-size: .85rem; font-weight: 600; cursor: pointer; color: rgba(255,255,255,0.68);
+            text-decoration: none; border-bottom: 3px solid transparent;
+            transition: color .15s, border-color .15s, background .15s;
+        }
+        .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.06); }
+        .tab-btn.active { color: #fff; border-bottom-color: #c9a227; }
     </style>
 </head>
 <body>
@@ -409,6 +417,11 @@ $recentUploads = $stmtRecent->fetchAll();
     </div>
     <a class="logout-link" href="LecturerLogout.php">Log out</a>
 </header>
+
+<nav class="tab-nav">
+    <span class="tab-btn active">Upload Results</span>
+    <a class="tab-btn" href="LecturerReportsStatus.php">Module Reports</a>
+</nav>
 
 <main class="page-wrap">
 
