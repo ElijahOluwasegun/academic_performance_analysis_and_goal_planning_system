@@ -146,7 +146,7 @@ function statusClass(string $status): string {
     <img class="crest" src="images/cu_logo.jpg" alt="Cavendish University crest">
     <div class="header-text">
         <span class="uni-name">Cavendish University</span>
-        <span class="portal-title">Academic Performance and Goal Planning</span>
+        <span class="portal-title">Academic Performance and Career & Module Planning</span>
     </div>
     <div class="header-right"></div>
 </header>
@@ -154,7 +154,7 @@ function statusClass(string $status): string {
 <nav class="tab-nav">
     <a class="tab-btn" href="ExamResultInterface.php">Results</a>
     <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
-    <a class="tab-btn" href="GoalPlanning.php">Goal Planning</a>
+    <a class="tab-btn" href="GoalPlanning.php">Career & Module Planner</a>
     <span class="tab-btn active">My Reports</span>
 </nav>
 

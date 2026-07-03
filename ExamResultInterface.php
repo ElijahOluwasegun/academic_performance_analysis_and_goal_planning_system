@@ -621,7 +621,7 @@ foreach ($grouped as $_yr => $_sms) {
     <img class="crest" src="images/cu_logo.jpg" alt="Cavendish University crest">
     <div class="header-text">
         <span class="uni-name">Cavendish University</span>
-        <span class="portal-title">Academic Performance and Goal Planning</span>
+        <span class="portal-title">Academic Performance and Career & Module Planning</span>
     </div>
     <div class="header-right"></div>
 </header>
@@ -629,7 +629,7 @@ foreach ($grouped as $_yr => $_sms) {
 <nav class="tab-nav">
     <span class="tab-btn active">Results</span>
     <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
-    <a class="tab-btn" href="GoalPlanning.php">Goal Planning</a>
+    <a class="tab-btn" href="GoalPlanning.php">Career & Module Planner</a>
     <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 

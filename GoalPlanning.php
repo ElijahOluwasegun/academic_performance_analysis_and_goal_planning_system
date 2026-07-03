@@ -658,7 +658,7 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
 <nav class="tab-nav">
     <a class="tab-btn" href="ExamResultInterface.php">Results</a>
     <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
-    <span class="tab-btn active">Goal Planning</span>
+    <span class="tab-btn active">Career & Module Planner</span>
     <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 
