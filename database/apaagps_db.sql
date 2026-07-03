@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Jul 02, 2026 at 06:58 AM
+-- Generation Time: Jul 02, 2026 at 08:54 AM
 -- Server version: 8.4.7
 -- PHP Version: 8.3.28
 
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS `cgpa_tb` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_cgpa_student_sem_year` (`student_ID`,`sem_no`,`year_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=112 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=113 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `cgpa_tb`
@@ -251,7 +251,7 @@ CREATE TABLE IF NOT EXISTS `gpa_tb` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_gpa_student_sem` (`student_ID`,`sem_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=87 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=88 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `gpa_tb`
@@ -326,7 +326,7 @@ CREATE TABLE IF NOT EXISTS `lecturer_module_tb` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_lecturer_module` (`lecturer_ID`,`module_code`),
   KEY `module_code` (`module_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `lecturer_module_tb`
@@ -334,15 +334,16 @@ CREATE TABLE IF NOT EXISTS `lecturer_module_tb` (
 
 INSERT INTO `lecturer_module_tb` (`ID`, `lecturer_ID`, `module_code`) VALUES
 (9, '183972', 'BIT111'),
+(14, '183972', 'BIT315'),
+(15, '183972', 'BIT325'),
+(16, '213910', 'AGM212'),
 (1, '220450', 'BIT213'),
 (2, '220450', 'BIT314'),
-(3, '220451', 'BIT110'),
-(4, '220451', 'BIT122'),
-(5, '220451', 'BIT212'),
-(8, '220452', 'BIT322'),
-(6, '220452', 'COM122'),
-(7, '220452', 'COM211'),
-(10, 'LEC0329', 'BIT113');
+(17, '932023', 'BBA116'),
+(10, 'LEC0329', 'BIT113'),
+(11, 'LEC0329', 'BIT124'),
+(12, 'LEC0329', 'BIT125'),
+(13, 'LEC0329', 'BIT212');
 
 -- --------------------------------------------------------
 
@@ -362,7 +363,7 @@ CREATE TABLE IF NOT EXISTS `lecturer_tb` (
   `lecturer_department` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`ID`),
   UNIQUE KEY `lecturer_ID` (`lecturer_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `lecturer_tb`
@@ -373,7 +374,9 @@ INSERT INTO `lecturer_tb` (`ID`, `lecturer_ID`, `lecturer_name`, `lecturer_title
 (2, '220451', 'Dr. Sarah Namuli', NULL, 'snamuli@cavendish.ac.ug', 'Lec@2026', NULL, NULL),
 (3, '220452', 'Mr. Kevin Ssemanda', NULL, 'kssemanda@cavendish.ac.ug', 'Lec@2026', NULL, NULL),
 (4, 'LEC0329', 'Stella Johns', 'Mrs', 'sjohns@cavendish.ac.ug', '$2y$10$bFTWDMhtSrJRsMzV5hnP5ecJUc8sWh13/Vnyt6wM6EToX4PZNHf2S', 'FST', 'Information Technology'),
-(5, '183972', 'Steve Alfred', 'Mr', 'salfred@cavendish.ac.ug', '$2y$10$qA0H2pG8WBDKecaLIIDPSuUvsJhR4TNcYokfHNNKwgy39QVHqhTfq', 'FST', 'Information Technology');
+(5, '183972', 'Steve Alfred', 'Mr', 'salfred@cavendish.ac.ug', '$2y$10$qA0H2pG8WBDKecaLIIDPSuUvsJhR4TNcYokfHNNKwgy39QVHqhTfq', 'FST', 'Information Technology'),
+(6, '213910', 'Wendo Kon', 'Mr', 'wkon@cavendish.ac.ug', '$2y$10$5ZjBF7L1u4PjyMnOj8XXX.VVawIC2ZUO3C6f5yAbgUTuyS3/HCc0S', 'FBS', 'Business'),
+(7, '932023', 'Hiliary Sylvester', 'Dr', 'hsylvester@cavendish.ac.ug', '$2y$10$mMcgFyvtZiyWnDqzIUVB.OtoYpxNxzVqOYRaFUh6jqCSuw4gzveWO', 'FBS', 'Business');
 
 -- --------------------------------------------------------
 
@@ -539,11 +542,11 @@ CREATE TABLE IF NOT EXISTS `results_tb` (
   `status_retake_pass` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
   `created_at` timestamp NOT NULL,
   PRIMARY KEY (`ID`),
+  UNIQUE KEY `uq_result_student_module` (`student_ID`,`module_code`),
   KEY `module_code` (`module_code`),
   KEY `student_ID` (`student_ID`),
   KEY `letter_grade` (`letter_grade`),
-  KEY `grade_point_2` (`grade_point`),
-  UNIQUE KEY `uq_result_student_module` (`student_ID`,`module_code`)
+  KEY `grade_point_2` (`grade_point`)
 ) ENGINE=InnoDB AUTO_INCREMENT=113 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
