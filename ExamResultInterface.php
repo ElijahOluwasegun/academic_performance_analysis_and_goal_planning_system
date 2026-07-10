@@ -40,7 +40,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $stmt->execute([$email]);
     $authStudent = $stmt->fetch();
 
-    if (!$authStudent || $password !== $authStudent["student_password"]) {
+    if (!$authStudent || !password_verify($password, $authStudent["student_password"])) {
         header("Location: index.php?error=invalid_credentials");
         exit();
     }
@@ -630,6 +630,7 @@ foreach ($grouped as $_yr => $_sms) {
     <span class="tab-btn active">Results</span>
     <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
     <a class="tab-btn" href="GoalPlanning.php">Career & Module Planner</a>
+    <a class="tab-btn" href="ModuleRegistration.php">Module Registration</a>
     <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 
