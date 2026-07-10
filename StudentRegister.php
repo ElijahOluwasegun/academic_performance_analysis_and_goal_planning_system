@@ -1,3 +1,14 @@
+<?php
+$db_host = '127.0.0.1'; $db_port = '3306'; $db_name = 'apaagps_db'; $db_user = 'root'; $db_pass = '';
+try {
+    $pdo = new PDO("mysql:host={$db_host};port={$db_port};dbname={$db_name};charset=utf8mb4", $db_user, $db_pass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]);
+    $programs = $pdo->query("SELECT program_code, program_name FROM program_tb ORDER BY program_name ASC")->fetchAll();
+} catch (PDOException $e) {
+    $programs = [];
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -407,10 +418,12 @@
                 <div class="form-alert" role="alert">
                     <?php
                         $errors = [
-                            'missing_fields'   => 'Please fill in all required fields.',
-                            'email_taken'      => 'An account with that email already exists.',
-                            'id_taken'         => 'That student ID is already registered.',
-                            'password_mismatch'=> 'Passwords do not match. Please try again.',
+                            'missing_fields'    => 'Please fill in all required fields.',
+                            'email_taken'       => 'An account with that email already exists.',
+                            'id_taken'          => 'That student ID is already registered.',
+                            'password_mismatch' => 'Passwords do not match. Please try again.',
+                            'invalid_program'   => 'That programme code does not exist. Please check your admission letter.',
+                            'invalid_session'   => 'Intake session must be JAN, MAY, or AUG.',
                         ];
                         echo htmlspecialchars($errors[$_GET['error']] ?? 'Something went wrong. Please try again.');
                     ?>
@@ -430,12 +443,18 @@
                     <div class="field-group">
                         <label class="field-label" for="student_id">Student ID</label>
                         <input type="text" name="StudentID" id="student_id"
-                               placeholder="e.g. 2300123456" autocomplete="off" required>
+                               placeholder="e.g. 230-456" autocomplete="off" required>
                     </div>
                     <div class="field-group">
-                        <label class="field-label" for="program_code">Programme code</label>
-                        <input type="text" name="ProgramCode" id="program_code"
-                               placeholder="e.g. BSc CS" autocomplete="off" required>
+                        <label class="field-label" for="program_code">Programme</label>
+                        <select name="ProgramCode" id="program_code" required>
+                            <option value="" disabled selected>Select programme</option>
+                            <?php foreach ($programs as $p): ?>
+                            <option value="<?= htmlspecialchars($p['program_code']) ?>">
+                                <?= htmlspecialchars($p['program_code']) ?> — <?= htmlspecialchars($p['program_name']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                 </div>
 
@@ -463,9 +482,8 @@
                         <label class="field-label" for="gender">Gender</label>
                         <select name="Gender" id="gender" required>
                             <option value="" disabled selected>Select</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Prefer not to say">Prefer not to say</option>
+                            <option value="M">Male</option>
+                            <option value="F">Female</option>
                         </select>
                     </div>
                     <div class="field-group">
@@ -492,20 +510,30 @@
                 <div class="field-row">
                     <div class="field-group">
                         <label class="field-label" for="intake_year">Intake year</label>
-                        <input type="text" name="IntakeYear" id="intake_year"
-                               placeholder="e.g. 2023" autocomplete="off" required>
+                        <input type="number" name="IntakeYear" id="intake_year"
+                               placeholder="e.g. 2023" min="2000" max="2100" autocomplete="off" required>
                     </div>
                     <div class="field-group">
                         <label class="field-label" for="intake_session">Intake session</label>
-                        <input type="text" name="IntakeSession" id="intake_session"
-                               placeholder="e.g. January" autocomplete="off" required>
+                        <select name="IntakeSession" id="intake_session" required>
+                            <option value="" disabled selected>Select</option>
+                            <option value="JAN">January (JAN)</option>
+                            <option value="MAY">May (MAY)</option>
+                            <option value="AUG">August (AUG)</option>
+                        </select>
                     </div>
                 </div>
 
                 <div class="field-group">
                     <label class="field-label" for="mode_of_entry">Mode of entry</label>
-                    <input type="text" name="ModeOfEntry" id="mode_of_entry"
-                           placeholder="e.g. Direct Entry" autocomplete="off" required>
+                    <select name="ModeOfEntry" id="mode_of_entry" required>
+                        <option value="" disabled selected>Select</option>
+                        <option value="Direct">Direct</option>
+                        <option value="Transfer">Transfer</option>
+                        <option value="Foundation">Foundation</option>
+                        <option value="Mature">Mature</option>
+                        <option value="Diploma">Diploma</option>
+                    </select>
                 </div>
 
                 <button type="submit" name="Submit" class="btn-register">Create account</button>
