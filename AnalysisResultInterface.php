@@ -259,6 +259,44 @@ foreach ($goalRows as $goal) {
     }
 }
 
+// ─── Class average per module (peer benchmarking) ────────────────────────────
+$classAvgByModule = [];
+foreach ($pdo->query("
+    SELECT module_code, ROUND(AVG(final_total), 1) AS avg_score
+    FROM   results_tb
+    GROUP  BY module_code
+")->fetchAll() as $row) {
+    $classAvgByModule[$row['module_code']] = (float)$row['avg_score'];
+}
+// Attach class_avg to each entry so the JS module chart can draw a benchmark bar
+foreach ($moduleDataBySemester as $key => &$mods) {
+    foreach ($mods as &$m) {
+        $m['class_avg'] = $classAvgByModule[$m['code']] ?? null;
+    }
+}
+unset($mods, $m);
+
+// ─── Ungraded modules for What-if CGPA simulator ─────────────────────────────
+$stmtFuture = $pdo->prepare("
+    SELECT m.module_code, m.module_name, m.credit_unit, m.year_no, m.sem_no
+    FROM   module_tb m
+    WHERE  m.program_code = ?
+      AND  m.module_code NOT IN (
+               SELECT module_code FROM results_tb WHERE student_ID = ?
+           )
+    ORDER  BY m.year_no ASC, m.sem_no ASC, m.module_code ASC
+");
+$stmtFuture->execute([$student['program_code'], $studentID]);
+$futureModules = $stmtFuture->fetchAll();
+
+// Running totals (baseline for the what-if calculation)
+$existingQP = 0.0;
+$existingCU = 0.0;
+foreach ($allResults as $r) {
+    $existingQP += (float)$r['grade_point'] * (float)$r['credit_unit'];
+    $existingCU += (float)$r['credit_unit'];
+}
+
 // ─── JSON payloads for Chart.js ────────────────────────────────────────────────
 $jsSemesterLabels = json_encode($semesterLabels);
 $jsSemesterKeys   = json_encode($semesterKeys);
@@ -269,6 +307,10 @@ $jsGpaSeries      = json_encode($gpaSeries);
 $jsCgpaSeries     = json_encode($cgpaSeries);
 $jsModuleData     = json_encode($moduleDataBySemester);
 $jsPassRetake     = json_encode(["pass" => $passCount, "retake" => $retakeCount]);
+$jsExistingQP     = json_encode(round($existingQP, 4));
+$jsExistingCU     = json_encode($existingCU);
+$cgpaLast         = !empty($cgpaSeries) ? end($cgpaSeries) : null;
+$jsCurrentCGPA    = json_encode($cgpaLast);
 
 $hasData = !empty($allResults);
 ?>
@@ -503,6 +545,83 @@ $hasData = !empty($allResults);
             .stat-row { flex-direction: column; }
             .hero { flex-direction: column; }
         }
+
+        /* ── CGPA Gauge card ─────────────────────────────────────────────────── */
+        .gauge-card {
+            display: flex; align-items: center; gap: 2rem;
+            background: #fff; border: 1px solid #999; border-radius: 6px;
+            padding: 1.2rem 1.5rem; margin-bottom: 1.75rem; flex-wrap: wrap;
+        }
+        .gauge-wrap { width: 180px; height: 100px; flex: 0 0 auto; position: relative; }
+        .gauge-label {
+            position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+            text-align: center; pointer-events: none; width: 100%;
+        }
+        .gauge-val { font-size: 1.7rem; font-weight: 800; color: #121e38; line-height: 1; }
+        .gauge-sub { font-size: .68rem; color: #666; margin-top: .15rem; }
+        .gauge-stats { flex: 1; min-width: 200px; }
+        .gs-item {
+            display: flex; justify-content: space-between;
+            padding: .42rem 0; border-bottom: 1px solid #eee; font-size: .84rem;
+        }
+        .gs-item:last-child { border-bottom: 0; }
+        .gs-label { color: #555; }
+        .gs-val { font-weight: 700; color: #121e38; }
+
+        /* ── Performance Heatmap ─────────────────────────────────────────────── */
+        .heatmap-scroll { overflow-x: auto; }
+        .heatmap-table {
+            width: 100%; border-collapse: collapse;
+            font-size: .8rem; min-width: 520px;
+        }
+        .heatmap-table th {
+            background: #121e38; color: #fff; padding: .45rem .7rem;
+            text-align: center; font-weight: 600; white-space: nowrap;
+        }
+        .heatmap-table th.col-mod { text-align: left; min-width: 180px; }
+        .heatmap-table td { padding: .32rem .6rem; text-align: center; border-bottom: 1px solid #e0e0e0; }
+        .heatmap-table td.mod-cell { text-align: left; }
+        .heatmap-table tr:hover td { filter: brightness(0.94); }
+        .hm-row-hdr td {
+            background: #e0e7ef !important; font-weight: 700; font-size: .74rem;
+            padding: .28rem .7rem !important; color: #213769; text-align: left !important;
+        }
+        .hm-chip {
+            border-radius: 4px; padding: .18rem .45rem; font-weight: 700;
+            display: inline-block; min-width: 2em; letter-spacing: .01em;
+        }
+
+        /* ── What-if Simulator ───────────────────────────────────────────────── */
+        .whatif-intro { font-size: .84rem; color: #444; margin-bottom: 1rem; line-height: 1.5; }
+        .whatif-result {
+            display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+            background: #121e38; color: #fff; border-radius: 8px;
+            padding: 1rem 1.4rem; margin-bottom: 1.2rem;
+        }
+        .wr-block { text-align: center; }
+        .wr-label { font-size: .75rem; opacity: .8; margin-bottom: .15rem; }
+        .wr-big   { font-size: 1.75rem; font-weight: 800; line-height: 1; }
+        .wr-sep   { width: 1px; height: 2.8rem; background: rgba(255,255,255,0.2); }
+        .whatif-modules { display: flex; flex-direction: column; gap: .65rem; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+        .wi-row {
+            background: #fff; border: 1px solid #ddd; border-radius: 6px;
+            padding: .65rem .9rem; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap;
+        }
+        .wi-mod { flex: 1; min-width: 150px; }
+        .wi-mod-name { font-weight: 600; font-size: .86rem; color: #121e38; }
+        .wi-mod-meta { font-size: .73rem; color: #777; }
+        .wi-slider-wrap { flex: 2; min-width: 180px; display: flex; align-items: center; gap: .55rem; }
+        .wi-slider-wrap input[type=range] { flex: 1; accent-color: #213769; }
+        .wi-mark { font-size: .88rem; font-weight: 700; color: #121e38; min-width: 2.8em; text-align: right; }
+        .wi-grade { font-size: .75rem; font-weight: 700; padding: .15rem .5rem; border-radius: 10px; min-width: 2.2em; text-align: center; }
+        .gA  { background:#d1fae5;color:#065f46; }
+        .gBp { background:#bbf7d0;color:#065f46; }
+        .gB  { background:#dbeafe;color:#1e3a8a; }
+        .gCp { background:#ede9fe;color:#4c1d95; }
+        .gC  { background:#fef9c3;color:#78350f; }
+        .gDp { background:#ffedd5;color:#9a3412; }
+        .gD  { background:#fee2e2;color:#991b1b; }
+        .g0  { background:#fca5a5;color:#7f1d1d; }
     </style>
 </head>
 <body>
@@ -522,6 +641,7 @@ $hasData = !empty($allResults);
     <a class="tab-btn" href="ExamResultInterface.php">Results</a>
     <span class="tab-btn active">Analysis</span>
     <a class="tab-btn" href="GoalPlanning.php">Career & Module Planner</a>
+    <a class="tab-btn" href="ModuleRegistration.php">Module Registration</a>
     <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 
@@ -620,36 +740,46 @@ $hasData = !empty($allResults);
     </div>
     <?php endif; ?>
 
-    <!-- ── Quick stats ── -->
-    <div class="stat-row">
-        <div class="stat-box">
-            <div class="label">Semesters Recorded</div>
-            <div class="value"><?= count($semesterLabels) ?></div>
-        </div>
-        <div class="stat-box">
-            <div class="label">Modules Passed</div>
-            <div class="value green"><?= $passCount ?></div>
-        </div>
-        <div class="stat-box">
-            <div class="label">Modules on Retake</div>
-            <div class="value <?= $retakeCount > 0 ? 'red' : '' ?>"><?= $retakeCount ?></div>
-        </div>
-        <div class="stat-box">
-            <div class="label">Latest CGPA</div>
-            <div class="value">
-                <?= !empty($cgpaSeries) && end($cgpaSeries) !== null
-                    ? number_format(end($cgpaSeries), 2)
-                    : '—' ?>
+    <!-- ── CGPA Gauge + Quick Stats ── -->
+    <div class="gauge-card">
+        <div class="gauge-wrap">
+            <canvas id="cgpaGauge"></canvas>
+            <div class="gauge-label">
+                <div class="gauge-val">
+                    <?= $cgpaLast !== null ? number_format($cgpaLast, 2) : '—' ?>
+                </div>
+                <div class="gauge-sub">CGPA / 5.0</div>
             </div>
         </div>
+        <div class="gauge-stats">
+            <div class="gs-item">
+                <span class="gs-label">Semesters on Record</span>
+                <span class="gs-val"><?= count($semesterLabels) ?></span>
+            </div>
+            <div class="gs-item">
+                <span class="gs-label">Modules Passed</span>
+                <span class="gs-val" style="color:#065f46"><?= $passCount ?></span>
+            </div>
+            <div class="gs-item">
+                <span class="gs-label">Modules on Retake</span>
+                <span class="gs-val" style="<?= $retakeCount > 0 ? 'color:#991b1b' : 'color:#065f46' ?>"><?= $retakeCount ?: '0 ✓' ?></span>
+            </div>
+            <div class="gs-item">
+                <span class="gs-label">Programme</span>
+                <span class="gs-val"><?= htmlspecialchars($student['program_code']) ?> · <?= htmlspecialchars($student['program_name']) ?></span>
+            </div>
+            <?php
+            $cgpaClass = $cgpaLast !== null
+                ? ($cgpaLast >= 4.5 ? 'First Class' : ($cgpaLast >= 3.5 ? 'Upper Second' : ($cgpaLast >= 2.5 ? 'Lower Second' : 'Pass')))
+                : null;
+            if ($cgpaClass): ?>
+            <div class="gs-item">
+                <span class="gs-label">Current Standing</span>
+                <span class="gs-val"><?= htmlspecialchars($cgpaClass) ?></span>
+            </div>
+            <?php endif; ?>
+        </div>
     </div>
-
-    <?php if ($retakeCount === 0): ?>
-    <div class="reassurance">
-        <span class="r-icon">✅</span>
-        <span>No retakes on record — every module you've taken so far, you've passed. Keep it up.</span>
-    </div>
-    <?php endif; ?>
 
     <!-- ── GPA / CGPA trend ── -->
     <div class="card">
@@ -687,10 +817,71 @@ $hasData = !empty($allResults);
         </div>
     </div>
 
-    <!-- ── Per-module score bar chart, filterable by semester ── -->
+    <!-- ── Assessment Heatmap ── -->
     <div class="card">
         <div class="card-header">
-            Module Scores
+            Assessment Heatmap
+            <span class="card-sub">Green = strong · Red = needs attention</span>
+        </div>
+        <div class="card-body">
+            <div class="heatmap-scroll">
+                <table class="heatmap-table">
+                    <thead>
+                        <tr>
+                            <th class="col-mod">Module</th>
+                            <th>CAT 1 <span style="opacity:.65;font-weight:400">/20</span></th>
+                            <th>CAT 2 <span style="opacity:.65;font-weight:400">/20</span></th>
+                            <th>Exam <span style="opacity:.65;font-weight:400">/60</span></th>
+                            <th>Total <span style="opacity:.65;font-weight:400">/100</span></th>
+                            <th>Grade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php
+                    $hmColor = function(float $pct): string {
+                        $h = round($pct * 1.2); // 0→0° red, 100→120° green
+                        return "background:hsl({$h},65%,87%);color:hsl({$h},55%,28%)";
+                    };
+                    $gradeStyle = [
+                        'A'  => 'background:#d1fae5;color:#065f46',
+                        'B+' => 'background:#bbf7d0;color:#065f46',
+                        'B'  => 'background:#dbeafe;color:#1e3a8a',
+                        'C+' => 'background:#ede9fe;color:#4c1d95',
+                        'C'  => 'background:#fef9c3;color:#78350f',
+                        'D+' => 'background:#ffedd5;color:#9a3412',
+                        'D'  => 'background:#fee2e2;color:#991b1b',
+                        '0'  => 'background:#fca5a5;color:#7f1d1d',
+                    ];
+                    foreach ($grouped as $year => $sems):
+                        foreach ($sems as $sem => $rows): ?>
+                        <tr class="hm-row-hdr"><td colspan="6">Year <?= $year ?> · Semester <?= $sem ?></td></tr>
+                        <?php foreach ($rows as $r):
+                            $gc = $gradeStyle[$r['letter_grade']] ?? 'background:#eee;color:#333';
+                        ?>
+                        <tr>
+                            <td class="mod-cell">
+                                <strong><?= htmlspecialchars($r['module_code']) ?></strong>
+                                <br><span style="font-size:.72rem;color:#666;font-weight:400"><?= htmlspecialchars($r['module_name']) ?></span>
+                            </td>
+                            <td><span class="hm-chip" style="<?= $hmColor($r['cat1_mk'] / 20 * 100) ?>"><?= $r['cat1_mk'] ?></span></td>
+                            <td><span class="hm-chip" style="<?= $hmColor($r['cat2_mk'] / 20 * 100) ?>"><?= $r['cat2_mk'] ?></span></td>
+                            <td><span class="hm-chip" style="<?= $hmColor($r['exam_mk'] / 60 * 100) ?>"><?= $r['exam_mk'] ?></span></td>
+                            <td><span class="hm-chip" style="<?= $hmColor((float)$r['final_total']) ?>"><?= $r['final_total'] ?></span></td>
+                            <td><span class="hm-chip" style="<?= $gc ?>"><?= htmlspecialchars($r['letter_grade']) ?></span></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Per-module score bar chart with class benchmark ── -->
+    <div class="card">
+        <div class="card-header">
+            Module Scores vs. Class Average
             <select class="sem-select" id="semFilter"></select>
         </div>
         <div class="card-body">
@@ -699,6 +890,65 @@ $hasData = !empty($allResults);
             </div>
         </div>
     </div>
+
+    <?php if (!empty($futureModules)): ?>
+    <!-- ── What-if CGPA Simulator ── -->
+    <div class="card">
+        <div class="card-header">
+            What-if CGPA Simulator
+            <span class="card-sub">Set target scores for remaining modules — see your projected graduation CGPA</span>
+        </div>
+        <div class="card-body">
+            <p class="whatif-intro">
+                You have <strong><?= count($futureModules) ?> module<?= count($futureModules) == 1 ? '' : 's' ?></strong>
+                remaining in your programme. Drag the sliders to your expected marks and watch your
+                projected CGPA update in real time.
+            </p>
+            <div class="whatif-result">
+                <div class="wr-block">
+                    <div class="wr-label">Current CGPA</div>
+                    <div class="wr-big"><?= $cgpaLast !== null ? number_format($cgpaLast, 2) : '—' ?></div>
+                </div>
+                <div class="wr-sep"></div>
+                <div class="wr-block">
+                    <div class="wr-label">Projected Graduation CGPA</div>
+                    <div class="wr-big" id="projCGPA">—</div>
+                </div>
+                <div class="wr-sep"></div>
+                <div class="wr-block">
+                    <div class="wr-label">Projected Standing</div>
+                    <div class="wr-big" style="font-size:1rem;padding-top:.3rem" id="projClass">—</div>
+                </div>
+            </div>
+            <div class="whatif-modules">
+                <?php
+                $prevYS = null;
+                foreach ($futureModules as $fm):
+                    $ys = "Y{$fm['year_no']} S{$fm['sem_no']}";
+                    if ($ys !== $prevYS):
+                        $prevYS = $ys;
+                ?>
+                <div style="font-size:.74rem;font-weight:700;color:#213769;padding:.3rem 0 .1rem;border-top:1px solid #ddd;margin-top:.3rem">
+                    Year <?= $fm['year_no'] ?> · Semester <?= $fm['sem_no'] ?>
+                </div>
+                <?php endif; ?>
+                <div class="wi-row" data-cu="<?= htmlspecialchars((string)$fm['credit_unit']) ?>">
+                    <div class="wi-mod">
+                        <div class="wi-mod-name"><?= htmlspecialchars($fm['module_code']) ?></div>
+                        <div class="wi-mod-meta"><?= htmlspecialchars($fm['module_name']) ?> · <?= $fm['credit_unit'] ?> CU</div>
+                    </div>
+                    <div class="wi-slider-wrap">
+                        <input type="range" min="0" max="100" value="65" class="wi-slider"
+                               data-cu="<?= htmlspecialchars((string)$fm['credit_unit']) ?>">
+                        <span class="wi-mark">65%</span>
+                    </div>
+                    <span class="wi-grade gCp">C+</span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <?php endif; ?>
 
@@ -771,35 +1021,107 @@ $hasData = !empty($allResults);
     // Default to the most recent semester
     semSelect.value = semesterKeys[semesterKeys.length - 1];
 
+    // ── Module score chart with class benchmark ────────────────────────────────
     let moduleChart;
     function renderModuleChart(key) {
-        const rows = moduleData[key] || [];
-        const labels = rows.map(r => r.code);
-        const scores = rows.map(r => r.score);
+        const rows      = moduleData[key] || [];
+        const labels    = rows.map(r => r.code);
+        const scores    = rows.map(r => r.score);
+        const classAvgs = rows.map(r => r.class_avg ?? null);
 
         if (moduleChart) {
-            moduleChart.data.labels = labels;
-            moduleChart.data.datasets[0].data = scores;
+            moduleChart.data.labels              = labels;
+            moduleChart.data.datasets[0].data    = scores;
+            moduleChart.data.datasets[1].data    = classAvgs;
             moduleChart.update();
             return;
         }
-
         moduleChart = new Chart(document.getElementById('moduleScoreChart'), {
             type: 'bar',
             data: {
-                labels: labels,
-                datasets: [{ label: 'Score (%)', data: scores, backgroundColor: blue }]
+                labels,
+                datasets: [
+                    { label: 'Your Score (%)',  data: scores,    backgroundColor: blue },
+                    { label: 'Class Avg (%)',   data: classAvgs, backgroundColor: 'rgba(184,134,11,0.55)', borderColor: amber, borderWidth: 1 }
+                ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: { legend: { position: 'bottom' } },
                 scales: { y: { beginAtZero: true, max: 100 } }
             }
         });
     }
     renderModuleChart(semSelect.value);
     semSelect.addEventListener('change', () => renderModuleChart(semSelect.value));
+
+    // ── CGPA Gauge (half-doughnut speedometer) ─────────────────────────────────
+    const currentCGPA = <?= $jsCurrentCGPA ?>;
+    if (currentCGPA !== null && document.getElementById('cgpaGauge')) {
+        const v   = Math.min(Math.max(currentCGPA, 0), 5);
+        const col = v >= 4 ? '#059669' : v >= 3 ? '#2c4a8a' : v >= 2 ? '#d97706' : '#dc2626';
+        new Chart(document.getElementById('cgpaGauge'), {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [v, 5 - v],
+                    backgroundColor: [col, '#e5e7eb'],
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                rotation: -90,
+                circumference: 180,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                animation: { duration: 1200 }
+            }
+        });
+    }
+
+    // ── What-if CGPA Simulator ────────────────────────────────────────────────
+    const existingQP = <?= $jsExistingQP ?>;
+    const existingCU = <?= $jsExistingCU ?>;
+
+    const GRADE_SCALE = [
+        { min: 80, gp: 5.00, letter: 'A',  css: 'gA'  },
+        { min: 75, gp: 4.50, letter: 'B+', css: 'gBp' },
+        { min: 70, gp: 4.00, letter: 'B',  css: 'gB'  },
+        { min: 65, gp: 3.50, letter: 'C+', css: 'gCp' },
+        { min: 60, gp: 3.00, letter: 'C',  css: 'gC'  },
+        { min: 55, gp: 2.50, letter: 'D+', css: 'gDp' },
+        { min: 50, gp: 2.00, letter: 'D',  css: 'gD'  },
+        { min:  0, gp: 0.00, letter: '0',  css: 'g0'  },
+    ];
+    const markToGrade = m => GRADE_SCALE.find(g => m >= g.min) || GRADE_SCALE[GRADE_SCALE.length - 1];
+    const cgpaToClass = c =>
+        c >= 4.50 ? 'First Class' : c >= 3.50 ? 'Upper Second' : c >= 2.50 ? 'Lower Second' : 'Pass';
+
+    function recalcWhatif() {
+        let addQP = 0, addCU = 0;
+        document.querySelectorAll('.wi-slider').forEach(s => {
+            const mark = parseInt(s.value, 10);
+            const cu   = parseFloat(s.dataset.cu);
+            const g    = markToGrade(mark);
+            addQP += g.gp * cu;
+            addCU += cu;
+            const row  = s.closest('.wi-row');
+            row.querySelector('.wi-mark').textContent = mark + '%';
+            const pill = row.querySelector('.wi-grade');
+            pill.textContent = g.letter;
+            pill.className   = 'wi-grade ' + g.css;
+        });
+        if (addCU === 0) return;
+        const proj = (existingQP + addQP) / (existingCU + addCU);
+        document.getElementById('projCGPA').textContent  = proj.toFixed(2);
+        document.getElementById('projClass').textContent = cgpaToClass(proj);
+    }
+
+    document.querySelectorAll('.wi-slider').forEach(s => s.addEventListener('input', recalcWhatif));
+    recalcWhatif();
 </script>
 <?php endif; ?>
 
