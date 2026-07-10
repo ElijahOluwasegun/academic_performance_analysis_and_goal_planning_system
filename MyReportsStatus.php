@@ -155,6 +155,7 @@ function statusClass(string $status): string {
     <a class="tab-btn" href="ExamResultInterface.php">Results</a>
     <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
     <a class="tab-btn" href="GoalPlanning.php">Career & Module Planner</a>
+    <a class="tab-btn" href="ModuleRegistration.php">Module Registration</a>
     <span class="tab-btn active">My Reports</span>
 </nav>
 
