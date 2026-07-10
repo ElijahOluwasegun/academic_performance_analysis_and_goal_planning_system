@@ -13,15 +13,15 @@ $db_user = "root";   // ← change if needed
 $db_pass = "";       // ← change if needed
 
 // ─── Recommendation source ──────────────────────────────────────────────────
-// 'api'      → call the Anthropic API at runtime (requires ANTHROPIC_API_KEY below)
+// 'api'      → call the Google Gemini API at runtime (requires GOOGLE_API_KEY below)
 // 'fallback' → use built-in rule-based logic, no external calls (default, works now)
 // 'db'       → use the optional career_paths_tb / module_career_tags_tb tables
 //              (run career_knowledge_base_migration.sql first, then switch this)
-define('RECOMMENDATION_SOURCE', 'fallback');
+define('RECOMMENDATION_SOURCE', 'api');
 
-// ─── Anthropic API key (only needed if RECOMMENDATION_SOURCE = 'api') ───────
-// Get one at https://console.anthropic.com/ — never commit real keys to source control.
-define('ANTHROPIC_API_KEY', ''); // ← paste your key here when you have one
+// ─── Google Gemini API key (only needed if RECOMMENDATION_SOURCE = 'api') ───
+// Get one at https://aistudio.google.com/app/apikey — never commit real keys to source control.
+define('GOOGLE_API_KEY', ''); // ← paste your key here when you have one
 
 // ════════════════════════════════════════════════════════════════════════
 // AUTH — this page is reached via the navbar, so it relies on the session
@@ -161,6 +161,22 @@ if ($hasResults) {
     usort($sorted, fn($a, $b) => $b["grade_point"] <=> $a["grade_point"]);
     $performanceSummary["strongest"] = array_slice($sorted, 0, 3);
     $performanceSummary["weakest"]   = array_slice(array_reverse($sorted), 0, 3);
+}
+
+// ─── Latest cumulative GPA ───────────────────────────────────────────────────
+$latestCgpa = 0.0;
+if ($hasResults) {
+    $stmtCgpa = $pdo->prepare("
+        SELECT cgpa_value FROM cgpa_tb
+        WHERE  student_ID = ?
+        ORDER  BY year_no DESC, sem_no DESC
+        LIMIT  1
+    ");
+    $stmtCgpa->execute([$studentID]);
+    $cgpaRow = $stmtCgpa->fetch();
+    if ($cgpaRow) {
+        $latestCgpa = (float)$cgpaRow['cgpa_value'];
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -371,89 +387,163 @@ function getFallbackRecommendations(array $nextModules, array $selectedCareers, 
 }
 
 /**
- * Calls the Anthropic API to generate richer, more specific recommendations.
- * Only used when RECOMMENDATION_SOURCE === 'api' and a key is set.
- * Returns null on any failure so the caller can fall back gracefully.
+ * Calls the Google Gemini API with a rich, student-specific prompt.
+ * Sends full grade history, CGPA, grade scale, and career descriptions so
+ * Gemini can give personalised advice rather than generic module summaries.
+ * Returns null on any failure so the caller falls back to the rule engine.
  */
-function getApiRecommendations(array $nextModules, array $selectedCareers, array $performanceSummary, string $studentName): ?array {
-    if (empty(ANTHROPIC_API_KEY)) {
-        return null; // no key configured — caller should fall back
-    }
-
-    $modulesPayload = array_map(fn($m) => [
-        "code"        => $m["module_code"],
-        "name"        => $m["module_name"],
-        "credit_unit" => $m["credit_unit"],
-    ], $nextModules);
-
-    $strongest = array_map(fn($r) => $r["module_name"] . " (GP {$r['grade_point']})", $performanceSummary["strongest"] ?? []);
-    $weakest   = array_map(fn($r) => $r["module_name"] . " (GP {$r['grade_point']})", $performanceSummary["weakest"] ?? []);
-
-    $systemPrompt = "You are an academic advisor for a university IT/computing program. " .
-        "Given a student's career interests, past academic performance, and their upcoming " .
-        "semester's modules, return ONLY valid JSON (no markdown, no preamble) — an array where " .
-        "each object has: module_code, module_name, priority ('high'|'medium'|'standard'), " .
-        "key_concepts (array of 4-6 short strings), real_world_use (1-2 sentences), " .
-        "rationale (1 sentence tying it to the student's chosen careers/performance).";
-
-    $userPrompt = json_encode([
-        "student_name"     => $studentName,
-        "career_interests" => $selectedCareers,
-        "strongest_areas"  => $strongest,
-        "weakest_areas"    => $weakest,
-        "upcoming_modules" => $modulesPayload,
-    ]);
-
-    $payload = [
-        "model"      => "claude-sonnet-4-6",
-        "max_tokens" => 2000,
-        "system"     => $systemPrompt,
-        "messages"   => [
-            ["role" => "user", "content" => $userPrompt],
-        ],
-    ];
-
-    $ch = curl_init("https://api.anthropic.com/v1/messages");
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_HTTPHEADER     => [
-            "Content-Type: application/json",
-            "x-api-key: " . ANTHROPIC_API_KEY,
-            "anthropic-version: 2023-06-01",
-        ],
-        CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT    => 20,
-    ]);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($response === false || $httpCode !== 200) {
-        return null; // network/API error — caller falls back
-    }
-
-    $data = json_decode($response, true);
-    $text = $data["content"][0]["text"] ?? null;
-    if (!$text) {
+function getApiRecommendations(
+    array  $nextModules,
+    array  $selectedCareers,
+    array  $careerOptions,
+    array  $performanceSummary,
+    array  $pastResults,
+    string $studentName,
+    string $programName,
+    float  $latestCgpa,
+    string &$errorMsg = ''
+): ?array {
+    if (empty(GOOGLE_API_KEY)) {
+        $errorMsg = 'No API key configured — set GOOGLE_API_KEY at the top of this file.';
         return null;
     }
 
-    // Strip accidental markdown fences if the model adds them
-    $clean = trim(preg_replace('/^```json|```$/m', '', $text));
-    $parsed = json_decode($clean, true);
+    // Full academic history as a readable table
+    $historyLines = [];
+    foreach ($pastResults as $r) {
+        $historyLines[] = sprintf(
+            "  Y%dS%d | %-8s | %-45s | %3d%% | %-3s (GP %.2f) | %s",
+            $r['year_no'], $r['sem_no'],
+            $r['module_code'], $r['module_name'],
+            $r['final_total'], $r['letter_grade'], $r['grade_point'],
+            $r['status_retake_pass']
+        );
+    }
+    $historyText = $historyLines ? implode("\n", $historyLines) : "  No results recorded yet.";
 
-    return is_array($parsed) ? $parsed : null;
+    // Upcoming modules list
+    $upcomingLines = [];
+    foreach ($nextModules as $m) {
+        $upcomingLines[] = "  {$m['module_code']} — {$m['module_name']} ({$m['credit_unit']} credit units)";
+    }
+    $upcomingText = implode("\n", $upcomingLines);
+
+    // Career goals with their descriptions
+    $careerText = implode("\n", array_map(
+        fn($c) => "  • {$c}: " . ($careerOptions[$c] ?? ''),
+        $selectedCareers
+    ));
+
+    $systemInstruction =
+        "You are an experienced academic advisor at Cavendish University. " .
+        "Your advice must be specific and personalised — grounded in the student's " .
+        "actual grade history and stated career goals, not generic. " .
+        "Return ONLY valid JSON (no markdown fences, no preamble). " .
+        "The JSON must be an array where every object has exactly these keys:\n" .
+        "  module_code      (string)\n" .
+        "  module_name      (string)\n" .
+        "  priority         \"high\" | \"medium\" | \"standard\"  — based on career fit AND the student's own performance patterns\n" .
+        "  key_concepts     array of 4-6 specific concepts or technologies covered in this module\n" .
+        "  real_world_use   2 sentences on how this module's content applies directly to the student's chosen career(s)\n" .
+        "  rationale        1 sentence explaining the priority, referencing their actual grades or career goals\n" .
+        "  study_tips       array of exactly 3 specific, actionable tips tailored to this student's strengths/weaknesses from their history\n" .
+        "  industry_tools   array of 3-5 real tools, platforms, or technologies professionals use in this subject area\n" .
+        "  weekly_focus     1 sentence: the single most important concept to nail in the first two weeks";
+
+    $userPrompt =
+        "GRADE SCALE:\n" .
+        "  80-100 → A (5.00) | 75-79 → B+ (4.50) | 70-74 → B (4.00) | 65-69 → C+ (3.50)\n" .
+        "  60-64 → C (3.00) | 55-59 → D+ (2.50) | 50-54 → D (2.00) | 0-49 → 0 (0.00, FAIL)\n\n" .
+        "STUDENT PROFILE:\n" .
+        "  Name:       {$studentName}\n" .
+        "  Programme:  {$programName}\n" .
+        "  CGPA:       " . number_format($latestCgpa, 4) . " / 5.0000\n\n" .
+        "CAREER GOALS:\n{$careerText}\n\n" .
+        "FULL ACADEMIC HISTORY:\n{$historyText}\n\n" .
+        "UPCOMING MODULES TO ADVISE ON:\n{$upcomingText}\n\n" .
+        "Analyse this student's specific grade patterns (where they excel, where they struggle, any fails or retakes), " .
+        "then produce a personalised recommendation for EACH upcoming module. " .
+        "study_tips must reference their actual past performance, not be generic advice.";
+
+    $payload = [
+        "system_instruction" => [
+            "parts" => [["text" => $systemInstruction]],
+        ],
+        "contents" => [
+            ["role" => "user", "parts" => [["text" => $userPrompt]]],
+        ],
+        "generationConfig" => [
+            "maxOutputTokens" => 3500,
+            "temperature"     => 0.35,
+        ],
+    ];
+
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" . GOOGLE_API_KEY;
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => ["Content-Type: application/json"],
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_TIMEOUT        => 45,
+        // Required on WAMP/Windows — the bundled CA bundle often can't verify Google's cert
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+    ]);
+    $response  = curl_exec($ch);
+    $curlError = curl_error($ch);
+    $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($response === false) {
+        $errorMsg = "cURL failed: {$curlError}";
+        return null;
+    }
+    if ($httpCode !== 200) {
+        $body = json_decode($response, true);
+        $detail = $body['error']['message'] ?? substr($response, 0, 300);
+        $errorMsg = "Gemini returned HTTP {$httpCode}: {$detail}";
+        return null;
+    }
+
+    $data = json_decode($response, true);
+    $text = $data["candidates"][0]["content"]["parts"][0]["text"] ?? null;
+    if (!$text) {
+        $errorMsg = 'Gemini responded but returned no text content. Full response: ' . substr($response, 0, 300);
+        return null;
+    }
+
+    $clean  = trim(preg_replace('/^```(?:json)?\s*|\s*```$/m', '', $text));
+    $parsed = json_decode($clean, true);
+    if (!is_array($parsed)) {
+        $errorMsg = 'Gemini returned non-JSON content: ' . substr($clean, 0, 300);
+        return null;
+    }
+
+    return $parsed;
 }
 
 // ─── Run the recommendation engine (only after the student submits interests) ─
-$recommendations = [];
+$recommendations  = [];
+$apiErrorMsg      = '';   // non-empty when the API call failed
+$usedApiFallback  = false;
 if ($hasSubmitted && !empty($nextModules)) {
     switch (RECOMMENDATION_SOURCE) {
         case 'api':
-            $recommendations = getApiRecommendations($nextModules, $selectedCareers, $performanceSummary, $student["student_name"]);
+            $recommendations = getApiRecommendations(
+                $nextModules,
+                $selectedCareers,
+                $careerOptions,
+                $performanceSummary,
+                $pastResults,
+                $student["student_name"],
+                $student["program_name"],
+                $latestCgpa,
+                $apiErrorMsg
+            );
             if ($recommendations === null) {
-                // API not configured or failed — gracefully fall back
+                $usedApiFallback = true;
                 $recommendations = getFallbackRecommendations($nextModules, $selectedCareers, $performanceSummary);
             }
             break;
@@ -602,7 +692,29 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
         .rec-text { font-size: .85rem; color: #222; line-height: 1.45; }
         .rationale { font-size: .82rem; font-style: italic; color: #444; margin-top: .5rem; }
 
+        .study-tips-list {
+            margin: .2rem 0 0 1.1rem; padding: 0;
+            font-size: .84rem; color: #222; line-height: 1.6;
+        }
+        .study-tips-list li { margin-bottom: .18rem; }
+        .tool-tag {
+            background: #f0fdf4; border: 1px solid #86efac; color: #166534;
+            font-size: .78rem; padding: .2rem .55rem; border-radius: 10px;
+        }
+        .weekly-focus {
+            background: #f0f9ff; border: 1px solid #bae6fd; color: #0c4a6e;
+            font-size: .83rem; padding: .5rem .8rem; border-radius: 6px;
+            margin-top: .65rem; line-height: 1.45;
+        }
+
         .empty { text-align: center; padding: 2.5rem 1rem; color: #888; }
+
+        .api-error-banner {
+            background: #fef2f2; border: 1px solid #fca5a5; border-left: 4px solid #dc2626;
+            border-radius: 6px; padding: .75rem 1rem; margin-bottom: 1rem;
+            font-size: .82rem; color: #7f1d1d; line-height: 1.5;
+        }
+        .api-error-banner strong { display: block; font-size: .85rem; margin-bottom: .2rem; }
 
         /* ── Upcoming module detail cards (always visible) ── */
         .upcoming-grid { display: flex; flex-direction: column; gap: 1rem; }
@@ -659,6 +771,7 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
     <a class="tab-btn" href="ExamResultInterface.php">Results</a>
     <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
     <span class="tab-btn active">Career & Module Planner</span>
+    <a class="tab-btn" href="ModuleRegistration.php">Module Registration</a>
     <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 
@@ -785,10 +898,24 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
             <div class="card-header">
                 Personalized Priority for Year <?= $nextYear ?>, Sem <?= $nextSem ?>
                 <span class="card-sub">
-                    <?= RECOMMENDATION_SOURCE === 'api' ? 'AI-generated' : 'Rule-based' ?> · which modules matter most for <?= implode(', ', $selectedCareers) ?>
+                    <?php if (RECOMMENDATION_SOURCE === 'api' && !$usedApiFallback): ?>
+                        Gemini AI
+                    <?php elseif (RECOMMENDATION_SOURCE === 'api' && $usedApiFallback): ?>
+                        Rule-based (Gemini failed)
+                    <?php else: ?>
+                        Rule-based
+                    <?php endif; ?>
+                    &nbsp;·&nbsp; which modules matter most for <?= htmlspecialchars(implode(', ', $selectedCareers)) ?>
                 </span>
             </div>
             <div class="card-body">
+
+                <?php if ($usedApiFallback && !empty($apiErrorMsg)): ?>
+                <div class="api-error-banner">
+                    <strong>Gemini API error — showing rule-based recommendations instead</strong>
+                    <?= htmlspecialchars($apiErrorMsg) ?>
+                </div>
+                <?php endif; ?>
 
                 <?php if (empty($nextModules)): ?>
                     <p class="empty">No module list found for Year <?= $nextYear ?>, Sem <?= $nextSem ?> under your program. Check that <code>module_tb</code> has entries for this program/year/semester.</p>
@@ -830,6 +957,34 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
 
                         <?php if (!empty($rec["rationale"])): ?>
                         <div class="rationale">💡 <?= htmlspecialchars($rec["rationale"]) ?></div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($rec["study_tips"])): ?>
+                        <div class="rec-section">
+                            <div class="rec-label">Personalised Study Tips</div>
+                            <ul class="study-tips-list">
+                                <?php foreach ((array)$rec["study_tips"] as $tip): ?>
+                                <li><?= htmlspecialchars($tip) ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($rec["industry_tools"])): ?>
+                        <div class="rec-section">
+                            <div class="rec-label">Industry Tools to Explore</div>
+                            <div class="concept-tags">
+                                <?php foreach ((array)$rec["industry_tools"] as $tool): ?>
+                                <span class="tool-tag"><?= htmlspecialchars($tool) ?></span>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($rec["weekly_focus"])): ?>
+                        <div class="weekly-focus">
+                            🎯 <strong>First 2 weeks:</strong> <?= htmlspecialchars($rec["weekly_focus"]) ?>
+                        </div>
                         <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
