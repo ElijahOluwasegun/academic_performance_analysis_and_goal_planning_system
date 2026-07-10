@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Jul 02, 2026 at 08:54 AM
+-- Generation Time: Jul 10, 2026 at 08:36 AM
 -- Server version: 8.4.7
 -- PHP Version: 8.3.28
 
@@ -325,8 +325,9 @@ CREATE TABLE IF NOT EXISTS `lecturer_module_tb` (
   `module_code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_lecturer_module` (`lecturer_ID`,`module_code`),
+  UNIQUE KEY `uq_module_one_lecturer` (`module_code`),
   KEY `module_code` (`module_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `lecturer_module_tb`
@@ -337,8 +338,19 @@ INSERT INTO `lecturer_module_tb` (`ID`, `lecturer_ID`, `module_code`) VALUES
 (14, '183972', 'BIT315'),
 (15, '183972', 'BIT325'),
 (16, '213910', 'AGM212'),
-(1, '220450', 'BIT213'),
+(29, '220450', 'BIT214'),
 (2, '220450', 'BIT314'),
+(30, '220450', 'BIT324'),
+(24, '248572', 'BIT122'),
+(25, '248572', 'BIT213'),
+(26, '248572', 'COM122'),
+(27, '248572', 'COM211'),
+(28, '248572', 'COM221'),
+(19, '530292', 'BIT110'),
+(20, '530292', 'BIT126'),
+(21, '530292', 'BIT215'),
+(22, '530292', 'FST220'),
+(23, '783482', 'BJC110'),
 (17, '932023', 'BBA116'),
 (10, 'LEC0329', 'BIT113'),
 (11, 'LEC0329', 'BIT124'),
@@ -363,7 +375,7 @@ CREATE TABLE IF NOT EXISTS `lecturer_tb` (
   `lecturer_department` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`ID`),
   UNIQUE KEY `lecturer_ID` (`lecturer_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `lecturer_tb`
@@ -376,7 +388,31 @@ INSERT INTO `lecturer_tb` (`ID`, `lecturer_ID`, `lecturer_name`, `lecturer_title
 (4, 'LEC0329', 'Stella Johns', 'Mrs', 'sjohns@cavendish.ac.ug', '$2y$10$bFTWDMhtSrJRsMzV5hnP5ecJUc8sWh13/Vnyt6wM6EToX4PZNHf2S', 'FST', 'Information Technology'),
 (5, '183972', 'Steve Alfred', 'Mr', 'salfred@cavendish.ac.ug', '$2y$10$qA0H2pG8WBDKecaLIIDPSuUvsJhR4TNcYokfHNNKwgy39QVHqhTfq', 'FST', 'Information Technology'),
 (6, '213910', 'Wendo Kon', 'Mr', 'wkon@cavendish.ac.ug', '$2y$10$5ZjBF7L1u4PjyMnOj8XXX.VVawIC2ZUO3C6f5yAbgUTuyS3/HCc0S', 'FBS', 'Business'),
-(7, '932023', 'Hiliary Sylvester', 'Dr', 'hsylvester@cavendish.ac.ug', '$2y$10$mMcgFyvtZiyWnDqzIUVB.OtoYpxNxzVqOYRaFUh6jqCSuw4gzveWO', 'FBS', 'Business');
+(7, '932023', 'Hiliary Sylvester', 'Dr', 'hsylvester@cavendish.ac.ug', '$2y$10$mMcgFyvtZiyWnDqzIUVB.OtoYpxNxzVqOYRaFUh6jqCSuw4gzveWO', 'FBS', 'Business'),
+(8, '530292', 'Jewel Rose', 'Ms', 'jrose@cavendish.ac.ug', '$2y$10$p6rCYawmNKYPi1SuLkGqWOtSDMGAye/QKU1B21BcWKmW4vwib1ayS', 'FST', 'Information Technology'),
+(9, '783482', 'Pam Sophie', 'Mrs', 'psophie@cavendish.ac.ug', '$2y$10$42XEVhmoCKy1PSllPlemjOVTgZwx8K4goo4rnoG.QStEwV.arvJKS', 'FBC', 'Social Sciences'),
+(10, '248572', 'William Henry', 'Dr', 'whenry@cavendish.ac.ug', '$2y$10$i27KDt7sNSDF3e8ef6OzZeSuf0PzglnZA1ddRJ120i9JMzgBfBQ7u', 'FST', 'Information Technology');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `module_registration_tb`
+--
+
+DROP TABLE IF EXISTS `module_registration_tb`;
+CREATE TABLE IF NOT EXISTS `module_registration_tb` (
+  `ID` int NOT NULL AUTO_INCREMENT,
+  `student_ID` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `module_code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `year_no` int NOT NULL,
+  `sem_no` int NOT NULL,
+  `is_retake` tinyint(1) NOT NULL DEFAULT '0',
+  `registered_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`ID`),
+  UNIQUE KEY `uq_student_module_period` (`student_ID`,`module_code`,`year_no`,`sem_no`),
+  KEY `student_ID` (`student_ID`),
+  KEY `module_code` (`module_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -734,7 +770,7 @@ CREATE TABLE IF NOT EXISTS `student_tb` (
   `student_ID` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
   `student_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `student_email` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `student_password` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `student_password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `program_code` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
   `gender` enum('M','F') COLLATE utf8mb4_unicode_ci NOT NULL,
   `nationality` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -753,9 +789,9 @@ CREATE TABLE IF NOT EXISTS `student_tb` (
 INSERT INTO `student_tb` (`ID`, `student_ID`, `student_name`, `student_email`, `student_password`, `program_code`, `gender`, `nationality`, `date_of_birth`, `intake_year`, `intake_session`, `mode_of_entry`) VALUES
 (1, '100-000', 'Jane Doe', 'jd100000@students.cavendish.ac.ug', '$2y$10$DHNM0AW4UG4s/', 'BIT', 'F', 'Ugandan', '2000-12-10', 2023, 'JAN', 'Direct'),
 (2, '100-001', 'Mary Jane', 'mj100001@students.cavendish.ac.ug', '$2y$10$wESqlg45fvQgo', 'BIT', 'F', 'Kenyan', '1999-04-20', 2024, 'JAN', 'Direct'),
-(3, '200-001', 'Amara Nakato', 'an200001@students.cavendish.ac.ug', 'Test@1234', 'BIT', 'F', 'Ugandan', '2002-03-15', 2023, 'AUG', 'Direct'),
-(4, '200-002', 'Brian Otieno', 'bo200002@students.cavendish.ac.ug', 'Test@1234', 'BIT', 'M', 'Kenyan', '2001-07-22', 2022, 'JAN', 'Direct'),
-(5, '200-003', 'Chidi Okonkwo', 'co200003@students.cavendish.ac.ug', 'Test@1234', 'BIT', 'M', 'Nigerian', '2001-11-05', 2021, 'AUG', 'Direct');
+(3, '200-001', 'Amara Nakato', 'an200001@students.cavendish.ac.ug', '$2y$10$UxrzEyQiiQ..8XE0loW8n.0lNtR72XqSmxCijgssaPCzodvVjsFmu', 'BIT', 'F', 'Ugandan', '2002-03-15', 2023, 'AUG', 'Direct'),
+(4, '200-002', 'Brian Otieno', 'bo200002@students.cavendish.ac.ug', '$2y$10$K0nnYR/qK/T49IJEvCuclurHJ8GKhiUv.fBMivJkfth6ZLQ/uzt.i', 'BIT', 'M', 'Kenyan', '2001-07-22', 2022, 'JAN', 'Direct'),
+(5, '200-003', 'Chidi Okonkwo', 'co200003@students.cavendish.ac.ug', '$2y$10$uUwNPA3Prg.Q.qL6hH3Uy.fI8Z68L4HbfvFx/TuPyh8gmWgMCZhpq', 'BIT', 'M', 'Nigerian', '2001-11-05', 2021, 'AUG', 'Direct');
 
 -- --------------------------------------------------------
 
@@ -828,6 +864,13 @@ ALTER TABLE `gpa_tb`
 ALTER TABLE `lecturer_module_tb`
   ADD CONSTRAINT `fk_lecturer_module_lecturer` FOREIGN KEY (`lecturer_ID`) REFERENCES `lecturer_tb` (`lecturer_ID`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_lecturer_module_module` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `module_registration_tb`
+--
+ALTER TABLE `module_registration_tb`
+  ADD CONSTRAINT `fk_modreg_module` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_modreg_student` FOREIGN KEY (`student_ID`) REFERENCES `student_tb` (`student_ID`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `module_report_tb`
