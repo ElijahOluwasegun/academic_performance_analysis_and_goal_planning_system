@@ -6,10 +6,18 @@ namespace Composer\Autoload;
 
 class ComposerStaticInit62e10e6c8df9afc192311b196c75bb33
 {
+    public static $files = array (
+        '0e6d7bf4a5811bfa5cf40c5ccd6fae6a' => __DIR__ . '/..' . '/symfony/polyfill-mbstring/bootstrap.php',
+    );
+
     public static $prefixLengthsPsr4 = array (
         'Z' =>
         array (
             'ZipStream\\' => 10,
+        ),
+        'S' =>
+        array (
+            'Symfony\\Polyfill\\Mbstring\\' => 26,
         ),
         'P' =>
         array (
@@ -33,6 +41,10 @@ class ComposerStaticInit62e10e6c8df9afc192311b196c75bb33
         'ZipStream\\' =>
         array (
             0 => __DIR__ . '/..' . '/maennchen/zipstream-php/src',
+        ),
+        'Symfony\\Polyfill\\Mbstring\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/symfony/polyfill-mbstring',
         ),
         'Psr\\SimpleCache\\' =>
         array (
@@ -64,6 +76,16 @@ class ComposerStaticInit62e10e6c8df9afc192311b196c75bb33
         ),
     );
 
+    public static $prefixesPsr0 = array (
+        'S' =>
+        array (
+            'Smalot\\PdfParser\\' =>
+            array (
+                0 => __DIR__ . '/..' . '/smalot/pdfparser/src',
+            ),
+        ),
+    );
+
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
         'Stringable' => __DIR__ . '/..' . '/myclabs/php-enum/stubs/Stringable.php',
@@ -74,6 +96,7 @@ class ComposerStaticInit62e10e6c8df9afc192311b196c75bb33
         return \Closure::bind(function () use ($loader) {
             $loader->prefixLengthsPsr4 = ComposerStaticInit62e10e6c8df9afc192311b196c75bb33::$prefixLengthsPsr4;
             $loader->prefixDirsPsr4 = ComposerStaticInit62e10e6c8df9afc192311b196c75bb33::$prefixDirsPsr4;
+            $loader->prefixesPsr0 = ComposerStaticInit62e10e6c8df9afc192311b196c75bb33::$prefixesPsr0;
             $loader->classMap = ComposerStaticInit62e10e6c8df9afc192311b196c75bb33::$classMap;
 
         }, null, ClassLoader::class);

@@ -209,16 +209,41 @@ function semComplete(array $rows): bool {
     return true;
 }
 
-// ─── Print eligibility: student must have reached Year 2 Sem 2 or beyond ─────
-$canPrint = false;
-foreach ($grouped as $_yr => $_sms) {
-    foreach ($_sms as $_sm => $_) {
-        if ((int)$_yr > 2 || ((int)$_yr === 2 && (int)$_sm >= 2)) {
-            $canPrint = true;
-            break 2;
-        }
+// ─── Provisional statement: available to ALL students, any time ──────────────
+// (kept as a variable for clarity even though it's always true now)
+$canPrintProvisional = true;
+
+// ─── Transcript eligibility: EVERY module in the program curriculum must have
+//     a recorded result. We also only surface the transcript tooling once the
+//     student has reached their final year (Year 3). ───────────────────────────
+$stmtCurric = $pdo->prepare("
+    SELECT module_code, module_name, year_no, sem_no
+    FROM   module_tb
+    WHERE  program_code = ?
+    ORDER  BY sem_no ASC, module_code ASC
+");
+$stmtCurric->execute([$student["program_code"]]);
+$curriculum = $stmtCurric->fetchAll();
+
+// Codes the student already has a result row for
+$resultCodes = [];
+$maxYearReached = 0;
+foreach ($allResults as $r) {
+    $resultCodes[$r["module_code"]] = true;
+    $maxYearReached = max($maxYearReached, (int)$r["year_no"]);
+}
+
+// Curriculum modules with no result yet → "missing marks"
+$missingModules = [];
+foreach ($curriculum as $c) {
+    if (!isset($resultCodes[$c["module_code"]])) {
+        $missingModules[] = $c;
     }
 }
+
+$isFinalYear     = $maxYearReached >= 3;          // reached Year 3
+$allModulesMarked = empty($missingModules);       // whole curriculum recorded
+$canPrintTranscript = $isFinalYear && $allModulesMarked;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -475,18 +500,24 @@ foreach ($grouped as $_yr => $_sms) {
         }
         .prev-results.visible { display: block; }
 
-        /* ── Print button ── */
+        /* ── Print / action buttons ── */
         .print-row {
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            gap: .5rem;
+            gap: .6rem;
             margin-top: 1.5rem;
             padding-bottom: 2rem;
         }
+        .print-actions {
+            display: flex;
+            gap: .6rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
         .btn-print {
             padding: .45rem 1.4rem;
-            border: 1px solid;
+            border: 1px solid #16213f;
             border-radius: 20px;
             background: #16213f;
             font-size: .9rem;
@@ -494,7 +525,9 @@ foreach ($grouped as $_yr => $_sms) {
             cursor: pointer;
             color: #fff;
         }
-        .btn-print:hover:not(:disabled) { background: #d0d0d0; }
+        .btn-print:hover:not(:disabled) { background: #0c1730; }
+        .btn-upload { background: #1f6b46; border-color: #1f6b46; }
+        .btn-upload:hover:not(:disabled) { background: #17563a; }
         .btn-print:disabled {
             background: #b0b5c0;
             border-color: #b0b5c0;
@@ -502,10 +535,33 @@ foreach ($grouped as $_yr => $_sms) {
             opacity: .7;
         }
         .print-lock-note {
-            font-size: .78rem;
+            font-size: .8rem;
             color: #7b8294;
             text-align: right;
+            max-width: 34rem;
         }
+
+        /* ── Missing-marks note (transcript locked) ── */
+        .missing-note {
+            width: 100%;
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-left: 4px solid #f59e0b;
+            border-radius: 6px;
+            padding: .8rem 1rem;
+            font-size: .84rem;
+            color: #7c4a03;
+            line-height: 1.5;
+            text-align: left;
+        }
+        .missing-note strong { color: #92400e; }
+        .missing-list {
+            margin: .6rem 0 .4rem 1.1rem;
+            padding: 0;
+        }
+        .missing-list li { margin-bottom: .2rem; }
+        .missing-loc { color: #a06a1b; font-size: .8rem; }
+        .missing-hint { margin-top: .5rem; font-size: .8rem; color: #8a5a12; }
 
         /* ── Empty state ── */
         .empty { text-align: center; padding: 2.5rem; color: #888; }
@@ -846,12 +902,51 @@ foreach ($grouped as $_yr => $_sms) {
     <?php endif; ?>
 
     <div class="print-row">
-        <?php if ($canPrint): ?>
-            <button class="btn-print" onclick="window.open('PrintStatement.php', '_blank')">Print</button>
-        <?php else: ?>
-            <button class="btn-print" disabled>Print</button>
+        <div class="print-actions">
+            <button class="btn-print btn-upload" onclick="window.location.href='UploadResults.php'">
+                &#8593; Upload Results Statement
+            </button>
+
+            <button class="btn-print" onclick="window.open('Printstatement.php', '_blank')">
+                Print Provisional Statement
+            </button>
+
+            <?php if ($isFinalYear): ?>
+                <?php if ($canPrintTranscript): ?>
+                    <button class="btn-print" onclick="window.open('TranscriptStatement.php', '_blank')">
+                        Print Transcript
+                    </button>
+                <?php else: ?>
+                    <button class="btn-print" disabled title="Some modules have no marks yet">
+                        Print Transcript
+                    </button>
+                <?php endif; ?>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($isFinalYear && !$allModulesMarked): ?>
+            <div class="missing-note">
+                <strong>&#9888; Your transcript is locked.</strong>
+                The following <?= count($missingModules) ?> module<?= count($missingModules) === 1 ? "" : "s" ?>
+                <?= count($missingModules) === 1 ? "has" : "have" ?> no marks recorded yet. Once all of them are marked,
+                the Print Transcript button will unlock automatically.
+                <ul class="missing-list">
+                    <?php foreach ($missingModules as $mm): ?>
+                    <li>
+                        <strong><?= htmlspecialchars($mm["module_code"]) ?></strong>
+                        — <?= htmlspecialchars($mm["module_name"]) ?>
+                        <span class="missing-loc">(Year <?= (int)$mm["year_no"] ?>, Sem <?= (int)$mm["sem_no"] ?>)</span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <div class="missing-hint">
+                    Missing a whole statement of marks? Use <strong>Upload Results Statement</strong> above to add them from your faculty PDF.
+                </div>
+            </div>
+        <?php elseif (!$isFinalYear): ?>
             <p class="print-lock-note">
-                Printing is available once you have completed Year 2, Semester 2.
+                Your official <strong>Transcript</strong> unlocks in your final year, once every module has a recorded mark.
+                You can print your <strong>Provisional Statement</strong> at any time.
             </p>
         <?php endif; ?>
     </div>

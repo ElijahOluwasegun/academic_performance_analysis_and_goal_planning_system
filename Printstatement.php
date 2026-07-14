@@ -8,10 +8,9 @@ $db_name = "apaagps_db";
 $db_user = "root";   // ← change if needed
 $db_pass = "";       // ← change if needed
 
-// ─── Auth: this page is opened from the Results page, so it relies on the
-//     session set at login rather than re-checking POST credentials ──────────
+// ─── Auth: opened from the Results page, relies on the login session ──────────
 if (empty($_SESSION["student_ID"])) {
-    header("Location: index.html?error=session_expired");
+    header("Location: index.php?error=session_expired");
     exit();
 }
 $studentID = $_SESSION["student_ID"];
@@ -30,8 +29,7 @@ try {
 
 // ─── Student bio data + program info ──────────────────────────────────────────
 $stmtS = $pdo->prepare("
-    SELECT s.student_ID, s.student_name, s.gender, s.nationality, s.date_of_birth,
-           s.intake_year, s.intake_session, s.mode_of_entry, s.program_code,
+    SELECT s.student_ID, s.student_name, s.program_code,
            p.program_name, p.program_faculty
     FROM   student_tb s
     JOIN   program_tb p ON s.program_code = p.program_code
@@ -42,14 +40,14 @@ $stmtS->execute([$studentID]);
 $student = $stmtS->fetch();
 
 if (!$student) {
-    header("Location: index.html?error=invalid_session");
+    header("Location: index.php?error=invalid_session");
     exit();
 }
 
-// ─── All results, joined with module name/credit unit and calendar term ──────
+// ─── All results, joined with module name and calendar term ───────────────────
 $stmtR = $pdo->prepare("
-    SELECT r.year_no, r.sem_no, r.module_code, m.module_name, m.credit_unit,
-           r.final_total, r.grade_point, r.letter_grade, r.status_retake_pass,
+    SELECT r.year_no, r.sem_no, r.module_code, m.module_name,
+           r.final_total, r.letter_grade, r.status_retake_pass,
            IFNULL(t.term_month, '—') AS calendar_month,
            (s.intake_year + IFNULL(t.year_offset, 0)) AS calendar_year
     FROM   results_tb r
@@ -64,47 +62,25 @@ $stmtR = $pdo->prepare("
 $stmtR->execute([$studentID]);
 $allResults = $stmtR->fetchAll();
 
-// ─── GPA per semester (sem_no runs 1–6 across the full program) ──────────────
-$stmtG = $pdo->prepare("
-    SELECT sem_no, gpa_value
-    FROM   gpa_tb
-    WHERE  student_ID = ?
-");
-$stmtG->execute([$studentID]);
-$gpaMap = [];
-foreach ($stmtG->fetchAll() as $g) {
-    $gpaMap[(int)$g["sem_no"]] = (float)$g["gpa_value"];
-}
-
-// ─── CGPA per (year, sem) — running CGPA history ──────────────────────────────
-$stmtC = $pdo->prepare("
-    SELECT year_no, sem_no, cgpa_value
-    FROM   cgpa_tb
-    WHERE  student_ID = ?
-");
-$stmtC->execute([$studentID]);
-$cgpaMap = [];
-foreach ($stmtC->fetchAll() as $c) {
-    $cgpaMap["{$c['year_no']}-{$c['sem_no']}"] = (float)$c["cgpa_value"];
-}
-
-// ─── Group by (year, sem) in chronological order, Year 1 Sem 1 first ──────────
+// ─── Group by (year, sem) chronologically — Semester in Program 1 → 6 ─────────
 $grouped = [];
 foreach ($allResults as $row) {
-    $grouped["{$row['year_no']}-{$row['sem_no']}"]["year"] = (int)$row["year_no"];
-    $grouped["{$row['year_no']}-{$row['sem_no']}"]["sem"]  = (int)$row["sem_no"];
-    $grouped["{$row['year_no']}-{$row['sem_no']}"]["rows"][] = $row;
+    $k = "{$row['year_no']}-{$row['sem_no']}";
+    $grouped[$k]["year"]   = (int)$row["year_no"];
+    $grouped[$k]["sem"]    = (int)$row["sem_no"];
+    $grouped[$k]["rows"][] = $row;
 }
 ksort($grouped, SORT_NATURAL);
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-function fmtDob(?string $dob): string {
-    if (!$dob) return '—';
-    $d = DateTime::createFromFormat('Y-m-d', $dob);
-    return $d ? $d->format('d/m/Y') : htmlspecialchars($dob);
-}
+// ─── Full faculty name (DB stores the abbreviation) ───────────────────────────
+$facultyNames = [
+    "FST" => "Faculty of Science & Technology",
+    "FBS" => "Faculty of Business & Management",
+    "FBC" => "Faculty of Social Sciences",
+];
+$facultyName = $facultyNames[$student["program_faculty"]] ?? $student["program_faculty"];
 
-$today = (new DateTime())->format('d/m/Y H:i');
+$dateIssued = (new DateTime())->format('j F Y'); // e.g. 14 July 2026
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -128,156 +104,78 @@ $today = (new DateTime())->format('d/m/Y H:i');
         /* ── Letterhead ── */
         .letterhead {
             display: flex;
-            gap: 2em;
+            gap: 1.6em;
             justify-content: center;
             align-items: center;
             text-align: center;
+            margin-bottom: 1.1rem;
+        }
+        .letterhead img { width: 5.5em; }
+        .letterhead h1 { font-size: 15px; font-weight: 700; }
+        .letterhead p  { font-size: 11px; font-weight: 700; line-height: 1.5; }
+        .letterhead .doc-title { font-size: 12px; font-weight: 700; margin-top: .5rem; }
+        .letterhead .doc-sub   { font-size: 10px; font-weight: 400; letter-spacing: .08em; }
+
+        /* ── Bio block (label / value) ── */
+        .bio {
             margin-bottom: 1rem;
-        }
-
-        img {
-            width: 6em;
-        }
-
-        .letterhead h1 {
-            font-size: 15px;
-            font-weight: 700;
-            margin-bottom: 0.2rem;
-        }
-        .letterhead p {
-            font-size: 10px;
-            line-height: 1.4;
-        }
-        .letterhead .doc-title {
             font-size: 12px;
-            font-weight: 700;
-            margin-top: 0.5rem;
-            letter-spacing: 0.03em;
+            line-height: 1.7;
         }
+        .bio .row { display: flex; }
+        .bio .label { font-weight: 700; width: 11rem; }
 
-        /* ── Bio info table ── */
-        .bio-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 1rem;
-        }
-        .bio-table td {
-            border: 1px solid #000;
-            padding: 4px 8px;
-            font-size: 11px;
-            vertical-align: top;
-        }
-        .bio-table td.label {
-            font-weight: 700;
-            width: 14%;
-            background: #fafafa;
-        }
-        .bio-table td.value {
-            width: 36%;
-        }
-
-        /* ── Semester block ── */
-        .sem-section { margin-bottom: 0.85rem; }
-
-        .sem-title {
-            background: #000;
-            color: #fff;
-            font-weight: 700;
-            font-size: 11px;
-            padding: 4px 8px;
-            text-transform: uppercase;
-        }
-
-        table.results-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+        /* ── Results table ── */
+        table.results-table { width: 100%; border-collapse: collapse; }
         table.results-table th,
         table.results-table td {
             border: 1px solid #000;
-            padding: 3px 6px;
-            font-size: 10.5px;
+            padding: 4px 7px;
+            font-size: 11px;
         }
-        table.results-table th {
+        table.results-table thead th {
             background: #d9d9d9;
             font-weight: 700;
-            text-align: left;
-        }
-        table.results-table td.num { text-align: center; }
-        table.results-table th.num { text-align: center; }
-
-        .gpa-footer-row td {
-            font-weight: 700;
-            background: #f0f0f0;
-            text-align: right;
-        }
-        .gpa-footer-row td.gpa-val,
-        .gpa-footer-row td.cgpa-val {
             text-align: center;
-            background: #fff;
         }
+        table.results-table thead th.left { text-align: left; }
+        table.results-table td.center { text-align: center; }
 
-        /* ── Award block ── */
-        .award-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1rem;
-        }
-        .award-table td {
-            border: 1px solid #000;
-            padding: 4px 8px;
-            font-size: 11px;
-        }
-        .award-table td.label { font-weight: 700; width: 20%; background: #fafafa; }
-
-        .medium-note {
-            text-align: center;
+        /* Term separator row spanning the whole width */
+        tr.term-row td {
+            background: #bfbfbf;
             font-weight: 700;
+            text-align: center;
             font-style: italic;
             font-size: 11px;
-            border: 1px solid #000;
-            padding: 4px;
-            margin-top: 0.4rem;
-            background: #f0f0f0;
         }
 
-        /* ── Signature / footer ── */
+        /* ── Signatures ── */
         .sign-block {
-            margin-top: 2.2rem;
-            text-align: center;
-            font-size: 10.5px;
+            margin-top: 3rem;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 700;
         }
-        .sign-line {
-            display: inline-block;
-            border-bottom: 1px solid #000;
-            width: 220px;
-            margin-bottom: 0.3rem;
-        }
+        .sign-col { width: 45%; }
+        .sign-dots { letter-spacing: 1px; }
+        .sign-role { text-align: center; margin-top: .35rem; }
 
         .doc-footer {
             display: flex;
-            justify-content: end;
-            margin-top: 0.6rem;
+            justify-content: flex-end;
+            margin-top: 1.2rem;
             font-size: 9.5px;
             color: #333;
         }
-        .doc-footer .warning { font-weight: 700; }
 
         /* ── Print controls (hidden when actually printing) ── */
-        .print-controls {
-            text-align: center;
-            margin-bottom: 1.2rem;
-        }
+        .print-controls { text-align: center; margin-bottom: 1.2rem; }
         .print-controls button {
-            padding: 0.5rem 1.3rem;
-            border-radius: 20px;
-            border: 1px solid #888;
-            background: #213769;
-            color: #fff;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            font-family: Arial, sans-serif;
+            padding: .5rem 1.3rem; border-radius: 20px; border: 1px solid #888;
+            background: #213769; color: #fff; font-weight: 600; font-size: .85rem;
+            cursor: pointer; font-family: Arial, sans-serif;
         }
         .print-controls button:hover { background: #121e38; }
 
@@ -286,11 +184,7 @@ $today = (new DateTime())->format('d/m/Y H:i');
             body { padding: 0; }
             .sheet { max-width: 100%; }
         }
-
-        @page {
-            size: A4;
-            margin: 14mm;
-        }
+        @page { size: A4; margin: 14mm; }
     </style>
 </head>
 <body>
@@ -304,146 +198,82 @@ $today = (new DateTime())->format('d/m/Y H:i');
         <!-- ── Letterhead ── -->
         <div class="letterhead">
             <div class="letterhead_image">
-                <img src="images\cu_logo.jpg" alt="Cavendish Logo">
+                <img src="images/cu_logo.jpg" alt="Cavendish Logo">
             </div>
             <div class="letterhead_text">
                 <h1>Cavendish University Uganda</h1>
-                <p>P.O Box 33145, Kampala, Uganda; Tel/Fax: +256 414 531700</p>
-                <p>Email: info@cavendish.ac.ug; Web: www.cavendish.ac.ug</p>
-                <p class="doc-title">PROVISIONAL STATEMENT OF RESULTS</p>
+                <p><?= htmlspecialchars($facultyName) ?></p>
+                <p><?= htmlspecialchars($student["program_name"]) ?></p>
+                <p class="doc-title">OFFICIAL EXAMINATION RESULTS STATEMENT</p>
+                <p class="doc-sub">PROGRESSION</p>
             </div>
         </div>
 
-        <!-- ── Bio data ── -->
-        <table class="bio-table">
-            <tr>
-                <td class="label">Name</td>
-                <td class="value"><?= htmlspecialchars($student["student_name"]) ?></td>
-                <td class="label">Gender</td>
-                <td class="value"><?= htmlspecialchars($student["gender"]) ?></td>
-            </tr>
-            <tr>
-                <td class="label">Student No.</td>
-                <td class="value"><?= htmlspecialchars($student["student_ID"]) ?></td>
-                <td class="label">Faculty</td>
-                <td class="value"><?= htmlspecialchars($student["program_faculty"]) ?></td>
-            </tr>
-            <tr>
-                <td class="label">Course</td>
-                <td class="value"><?= htmlspecialchars($student["program_name"]) ?></td>
-                <td class="label">Date of Birth</td>
-                <td class="value"><?= fmtDob($student["date_of_birth"]) ?></td>
-            </tr>
-            <tr>
-                <td class="label">Year of Entry</td>
-                <td class="value"><?= htmlspecialchars($student["intake_year"]) ?></td>
-                <td class="label">Nationality</td>
-                <td class="value"><?= htmlspecialchars($student["nationality"]) ?></td>
-            </tr>
-            <tr>
-                <td class="label">Mode of Entry</td>
-                <td class="value"><?= htmlspecialchars($student["mode_of_entry"]) ?></td>
-                <td class="label"></td>
-                <td class="value"></td>
-            </tr>
-        </table>
+        <!-- ── Bio ── -->
+        <div class="bio">
+            <div class="row"><span class="label">DATE ISSUED:</span><span><?= htmlspecialchars($dateIssued) ?></span></div>
+            <div class="row"><span class="label">STUDENT NAME:</span><span><?= htmlspecialchars($student["student_name"]) ?></span></div>
+            <div class="row"><span class="label">STUDENT NUMBER:</span><span><?= htmlspecialchars($student["student_ID"]) ?></span></div>
+        </div>
 
         <?php if (empty($grouped)): ?>
-            <p style="text-align:center; padding: 2rem; color:#555;">No results have been recorded yet.</p>
+            <p style="text-align:center; padding:2rem; color:#555;">No results have been recorded yet.</p>
         <?php else: ?>
 
-            <?php
-            $finalYear = null; $finalSem = null;
-            foreach ($grouped as $block) {
-                $finalYear = $block["year"];
-                $finalSem  = $block["sem"];
-            }
-            ?>
-
-            <?php foreach ($grouped as $key => $block):
-                $year = $block["year"];
-                $sem  = $block["sem"];
-                $rows = $block["rows"];
-                $gpa  = $gpaMap[$sem] ?? null;
-                $cgpa = $cgpaMap["{$year}-{$sem}"] ?? null;
-            ?>
-            <div class="sem-section">
-                <div class="sem-title">Year <?= $year ?>, SEMESTER <?= $sem ?></div>
-                <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th style="width:12%">Module Code</th>
-                            <th>Module Name</th>
-                            <th class="num" style="width:8%">Score</th>
-                            <th class="num" style="width:6%">CU</th>
-                            <th class="num" style="width:6%">GP</th>
-                            <th class="num" style="width:8%">Grade</th>
-                            <th class="num" style="width:10%">Comment</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($rows as $r): ?>
-                        <tr>
-                            <td><?= htmlspecialchars($r["module_code"]) ?></td>
-                            <td><?= htmlspecialchars($r["module_name"]) ?></td>
-                            <td class="num"><?= (int)$r["final_total"] ?></td>
-                            <td class="num"><?= htmlspecialchars($r["credit_unit"]) ?></td>
-                            <td class="num"><?= htmlspecialchars($r["grade_point"]) ?></td>
-                            <td class="num"><?= htmlspecialchars($r["letter_grade"]) ?></td>
-                            <td class="num">
-                                <?= strcasecmp($r["status_retake_pass"], "Pass") === 0 ? "NP" : htmlspecialchars($r["status_retake_pass"]) ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-
-                        <tr class="gpa-footer-row">
-                            <?php if ($cgpa !== null): ?>
-                                <td colspan="3">GPA</td>
-                                <td class="gpa-val" colspan="1"><?= number_format($gpa ?? 0, 2) ?></td>
-                                <td colspan="1">CGPA</td>
-                                <td class="cgpa-val" colspan="2"><?= number_format($cgpa, 2) ?></td>
-                            <?php else: ?>
-                                <td colspan="5">GPA</td>
-                                <td class="gpa-val" colspan="2"><?= number_format($gpa ?? 0, 2) ?></td>
-                            <?php endif; ?>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <?php endforeach; ?>
-
-            <!-- ── Award block (only meaningful once the program is complete) ── -->
-            <table class="award-table">
+        <!-- ── Results table ── -->
+        <table class="results-table">
+            <thead>
                 <tr>
-                    <td class="label">AWARD</td>
-                    <td colspan="3"><?= htmlspecialchars($student["program_name"]) ?></td>
+                    <th style="width:12%">CODE</th>
+                    <th class="left">MODULE</th>
+                    <th style="width:10%">GRADE</th>
+                    <th style="width:10%">SCORE</th>
+                    <th style="width:16%">REMARKS</th>
                 </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($grouped as $block):
+                    $first = $block["rows"][0];
+                    $termLabel = "Term: {$first['calendar_year']}-{$first['calendar_month']} - Semester in Program: {$block['sem']}";
+                ?>
+                <tr class="term-row"><td colspan="5"><?= htmlspecialchars($termLabel) ?></td></tr>
+                <?php foreach ($block["rows"] as $r):
+                    // REMARKS is blank for a normal pass; otherwise show the status
+                    $remark = (strcasecmp($r["status_retake_pass"], "Pass") === 0) ? "" : $r["status_retake_pass"];
+                ?>
                 <tr>
-                    <td class="label">Date of Completion</td>
-                    <td style="width:30%">&nbsp;</td>
-                    <td class="label">Class of Award</td>
-                    <td>&nbsp;</td>
+                    <td><?= htmlspecialchars($r["module_code"]) ?></td>
+                    <td><?= htmlspecialchars($r["module_name"]) ?></td>
+                    <td class="center"><?= htmlspecialchars($r["letter_grade"]) ?></td>
+                    <td class="center"><?= (int)$r["final_total"] ?>%</td>
+                    <td class="center"><?= htmlspecialchars($remark) ?></td>
                 </tr>
-            </table>
-            <div class="medium-note">The Medium of Instruction is English</div>
+                <?php endforeach; ?>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
 
         <?php endif; ?>
 
-        <!-- ── Signature ── -->
+        <!-- ── Signatures ── -->
         <div class="sign-block">
-            <div class="sign-line"></div><br>
-            <div>For Examinations Office</div>
-            <span class="warning">WARNING: This reflects provisional results as such should NOT be substituted for a Transcript</span>
+            <div class="sign-col">
+                <div><span>SIGNED:</span> <span class="sign-dots">..................................</span></div>
+                <div class="sign-role">Dean of <?= htmlspecialchars($student["program_faculty"]) ?></div>
+            </div>
+            <div class="sign-col">
+                <div><span>SIGNED:</span> <span class="sign-dots">..................................</span></div>
+                <div class="sign-role">Registrar</div>
+            </div>
         </div>
-                                
+
         <div class="doc-footer">
-            <span>Printed on: <?= $today ?></span>
+            <span>This reflects provisional results and should NOT be substituted for a Transcript.</span>
         </div>
 
     </div>
 
     <script>
-        // Open the print dialog automatically once the page has rendered.
         window.addEventListener('load', function () {
             setTimeout(function () { window.print(); }, 300);
         });
