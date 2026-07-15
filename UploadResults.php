@@ -45,6 +45,14 @@ $programCode = $student["program_code"];
 
 require __DIR__ . "/vendor/autoload.php";
 
+// ─── Tesseract OCR (for emailed results screenshots/images) ──────────────────
+// Leave blank to auto-detect (common install dirs + PATH), or hard-code the
+// full path to tesseract.exe, e.g. 'C:\Program Files\Tesseract-OCR\tesseract.exe'.
+define('TESSERACT_BIN', '');
+
+// Image types we accept for the OCR path
+const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff"];
+
 // ══════════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════════════════════════════════════
@@ -100,6 +108,72 @@ function gradeFromScore(int $score, array $grades): array {
     return ["letter_grade" => "0", "grade_point" => "0.00"];
 }
 
+/** Locate the Tesseract binary: explicit constant → common dirs → PATH. */
+function findTesseract(): ?string {
+    if (TESSERACT_BIN !== "" && is_file(TESSERACT_BIN)) { return TESSERACT_BIN; }
+    foreach ([
+        'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+    ] as $p) {
+        if (is_file($p)) { return $p; }
+    }
+    $v = @shell_exec('tesseract --version 2>&1');
+    if (is_string($v) && stripos($v, "tesseract") !== false) { return "tesseract"; }
+    return null;
+}
+
+/** Run OCR on an image and return the recognised text ('' on failure). */
+function ocrImage(string $imgPath, string $bin): string {
+    // --psm 6 = treat the image as a single uniform block (good for tables);
+    // "stdout" tells tesseract to write the text to standard output.
+    $cmd = escapeshellarg($bin) . ' ' . escapeshellarg($imgPath) . ' stdout --psm 6 2>&1';
+    $out = @shell_exec($cmd);
+    return is_string($out) ? $out : "";
+}
+
+/**
+ * Parse an emailed results table (CODE | CAT1 | CAT2 | EXAMS | TOTAL) from OCR
+ * text. Returns rows of ['code','cat1','cat2','exam','total'].
+ * Tries row-wise first (one module per line — what --psm 6 usually yields for a
+ * rendered table); falls back to column-wise if OCR split it into columns.
+ */
+function parseEmailResults(string $text): array {
+    // ── Row-wise: e.g. "BIT324 16% 16% 36% 68%" ──
+    $rows = [];
+    foreach (preg_split('/\R/', $text) as $line) {
+        if (preg_match('/\b([A-Z]{2,4}\d{3})\b[^\d]*(\d{1,3})\D+(\d{1,3})\D+(\d{1,3})\D+(\d{1,3})/', $line, $m)) {
+            $rows[] = [
+                "code" => strtoupper($m[1]),
+                "cat1" => (int)$m[2], "cat2" => (int)$m[3],
+                "exam" => (int)$m[4], "total" => (int)$m[5],
+            ];
+        }
+    }
+    if (!empty($rows)) { return $rows; }
+
+    // ── Column-wise fallback: all codes, then 4 equal-length number columns ──
+    preg_match_all('/\b([A-Z]{2,4}\d{3})\b/', $text, $cm);
+    $codes = array_map('strtoupper', $cm[1]);
+
+    // Remove code tokens and header words so their digits/letters don't pollute
+    $clean = preg_replace('/\b[A-Z]{2,4}\d{3}\b/', ' ', $text);
+    $clean = preg_replace('/\b(CODE|CAT\s*1|CAT\s*2|CAT|EXAMS?|TOTAL|REMARKS?|GRADE|SCORE|SID)\b/i', ' ', $clean);
+    preg_match_all('/\d{1,3}/', $clean, $nm);
+    $nums = array_map('intval', $nm[0]);
+
+    $n = count($codes);
+    if ($n > 0 && count($nums) === $n * 4) {
+        for ($i = 0; $i < $n; $i++) {
+            $rows[] = [
+                "code" => $codes[$i],
+                "cat1" => $nums[$i],        "cat2" => $nums[$n + $i],
+                "exam" => $nums[2 * $n + $i], "total" => $nums[3 * $n + $i],
+            ];
+        }
+    }
+    return $rows;
+}
+
 // Curriculum for this program: name → module row, and code → module row
 $stmtCur = $pdo->prepare("
     SELECT module_code, module_name, year_no, sem_no, credit_unit
@@ -121,14 +195,18 @@ $grades = $pdo->query("SELECT min_mark, max_mark, letter_grade, grade_point FROM
 // ══════════════════════════════════════════════════════════════════════════════
 $phase       = "upload";   // upload | preview | done
 $error       = "";
-$previewRows = [];         // [ ['code'=>, 'name'=>, 'score'=>, 'year'=>, 'sem'=>, 'grade'=>, 'gp'=>, 'matched'=>bool ] ]
+$previewRows = [];         // [ ['code','name','score','cat1','cat2','exam','year','sem','grade','gp','matched'] ]
 $pdfStudentNo = "";
 $summary     = null;
+$uploadKind  = "pdf";      // pdf (provisional statement) | image (email screenshot)
 
 // ── PHASE 3: SAVE confirmed rows ──────────────────────────────────────────────
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save") {
     $codes  = $_POST["module_code"] ?? [];
     $scores = $_POST["score"]       ?? [];
+    $cat1s  = $_POST["cat1"]         ?? [];   // present only for image (email) uploads
+    $cat2s  = $_POST["cat2"]         ?? [];
+    $exams  = $_POST["exam"]         ?? [];
 
     $toSave = [];
     foreach ($codes as $i => $code) {
@@ -137,7 +215,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save"
         if ($code === "" || !isset($moduleByCode[$code])) { continue; } // unmatched/blank → skip
         if ($score < 0 || $score > 100)                   { continue; } // invalid score → skip
         // Last write wins if a code appears twice
-        $toSave[$code] = $score;
+        $toSave[$code] = [
+            "total" => $score,
+            "cat1"  => max(0, (int)($cat1s[$i] ?? 0)),
+            "cat2"  => max(0, (int)($cat2s[$i] ?? 0)),
+            "exam"  => max(0, (int)($exams[$i] ?? 0)),
+        ];
     }
 
     if (empty($toSave)) {
@@ -149,10 +232,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save"
             INSERT INTO results_tb
                 (module_code, student_ID, year_no, sem_no, cat1_mk, cat2_mk, exam_mk,
                  grade_point, letter_grade, final_total, status_retake_pass, created_at)
-            VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, NOW())
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ON DUPLICATE KEY UPDATE
                 year_no            = VALUES(year_no),
                 sem_no             = VALUES(sem_no),
+                cat1_mk            = VALUES(cat1_mk),
+                cat2_mk            = VALUES(cat2_mk),
+                exam_mk            = VALUES(exam_mk),
                 grade_point        = VALUES(grade_point),
                 letter_grade       = VALUES(letter_grade),
                 final_total        = VALUES(final_total),
@@ -161,12 +247,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save"
 
         try {
             $pdo->beginTransaction();
-            foreach ($toSave as $code => $score) {
-                $m     = $moduleByCode[$code];
-                $g     = gradeFromScore($score, $grades);
+            foreach ($toSave as $code => $mk) {
+                $m      = $moduleByCode[$code];
+                $score  = $mk["total"];
+                $g      = gradeFromScore($score, $grades);
                 $status = $score >= 50 ? "Pass" : "Retake";
                 $ins->execute([
                     $code, $studentID, (int)$m["year_no"], (int)$m["sem_no"],
+                    $mk["cat1"], $mk["cat2"], $mk["exam"],
                     $g["grade_point"], $g["letter_grade"], $score, $status,
                 ]);
                 // MySQL: rowCount() is 1 for a fresh insert, 2 for an update
@@ -188,43 +276,74 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save"
 
 // ── PHASE 2: PARSE uploaded PDF → editable preview ────────────────────────────
 elseif ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_FILES["statement"])) {
-    $f = $_FILES["statement"];
+    $f   = $_FILES["statement"];
+    $ext = strtolower(pathinfo($f["name"], PATHINFO_EXTENSION));
+
     if ($f["error"] !== UPLOAD_ERR_OK) {
         $error = "Upload failed (error code {$f['error']}). Please try again.";
     } elseif ($f["size"] > 8 * 1024 * 1024) {
-        $error = "That file is larger than 8 MB. Please upload the original statement PDF.";
-    } elseif (strtolower(pathinfo($f["name"], PATHINFO_EXTENSION)) !== "pdf") {
-        $error = "Please upload a PDF file (the statement you received from the faculty).";
-    } else {
+        $error = "That file is larger than 8 MB. Please upload the original file.";
+
+    // ── PDF provisional statement: module NAME + total score ──────────────────
+    } elseif ($ext === "pdf") {
+        $uploadKind = "pdf";
         try {
-            $text  = (new \Smalot\PdfParser\Parser())->parseFile($f["tmp_name"])->getText();
+            $text = (new \Smalot\PdfParser\Parser())->parseFile($f["tmp_name"])->getText();
             if (preg_match('/\b(\d{3}-\d{3})\b/', $text, $mn)) { $pdfStudentNo = $mn[1]; }
 
-            $pairs = extractPairsFromPdf($f["tmp_name"]);
-            foreach ($pairs as $p) {
+            foreach (extractPairsFromPdf($f["tmp_name"]) as $p) {
                 if ($p["score"] === null) { continue; }
                 $m = $moduleByName[normName($p["name"])] ?? null;
                 $g = gradeFromScore((int)$p["score"], $grades);
                 $previewRows[] = [
-                    "code"    => $m["module_code"]  ?? "",
-                    "name"    => $p["name"],
-                    "score"   => (int)$p["score"],
-                    "year"    => $m["year_no"]      ?? null,
-                    "sem"     => $m["sem_no"]        ?? null,
-                    "grade"   => $g["letter_grade"],
-                    "gp"      => $g["grade_point"],
-                    "matched" => $m !== null,
+                    "code"  => $m["module_code"] ?? "", "name" => $p["name"], "score" => (int)$p["score"],
+                    "cat1"  => null, "cat2" => null, "exam" => null,
+                    "year"  => $m["year_no"] ?? null, "sem" => $m["sem_no"] ?? null,
+                    "grade" => $g["letter_grade"], "gp" => $g["grade_point"], "matched" => $m !== null,
                 ];
             }
-
             if (empty($previewRows)) {
-                $error = "Couldn't read any results from that PDF. It may be a scanned image rather than a text document — try the original digital copy from the faculty.";
+                $error = "Couldn't read any results from that PDF. It may be a scanned image — try the original digital copy, or upload a screenshot of your results email instead.";
             } else {
                 $phase = "preview";
             }
         } catch (Throwable $e) {
             $error = "Couldn't read that PDF: " . $e->getMessage();
         }
+
+    // ── Image: emailed results screenshot: CODE + CAT1 + CAT2 + EXAM + TOTAL ──
+    } elseif (in_array($ext, IMAGE_EXTS, true)) {
+        $uploadKind = "image";
+        $bin = findTesseract();
+        if ($bin === null) {
+            $error = "Reading images needs Tesseract OCR, which isn't installed on the server yet. "
+                   . "Install Tesseract-OCR (or ask your administrator), then try again — "
+                   . "or upload your PDF provisional statement instead.";
+        } else {
+            $text = ocrImage($f["tmp_name"], $bin);
+            if (preg_match('/SID[:\s]*([0-9]{3}-?[0-9]{3})/i', $text, $mn)) {
+                $digits = str_replace("-", "", $mn[1]);
+                $pdfStudentNo = preg_replace('/^(\d{3})(\d{3})$/', '$1-$2', $digits);
+            }
+            foreach (parseEmailResults($text) as $r) {
+                $m = $moduleByCode[$r["code"]] ?? null;
+                $g = gradeFromScore((int)$r["total"], $grades);
+                $previewRows[] = [
+                    "code"  => $m["module_code"] ?? "", "name" => $m["module_name"] ?? $r["code"], "score" => (int)$r["total"],
+                    "cat1"  => (int)$r["cat1"], "cat2" => (int)$r["cat2"], "exam" => (int)$r["exam"],
+                    "year"  => $m["year_no"] ?? null, "sem" => $m["sem_no"] ?? null,
+                    "grade" => $g["letter_grade"], "gp" => $g["grade_point"], "matched" => $m !== null,
+                ];
+            }
+            if (empty($previewRows)) {
+                $error = "Couldn't read any results from that image. Make sure the whole results table is visible and the text is sharp, then try again.";
+            } else {
+                $phase = "preview";
+            }
+        }
+
+    } else {
+        $error = "Please upload a PDF statement or an image (PNG/JPG) screenshot of your results email.";
     }
 }
 
@@ -328,25 +447,31 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
     <!-- ═══════════ PHASE 1: UPLOAD ═══════════ -->
     <div class="card">
         <div class="card-header">
-            Upload Your Provisional Results Statement
+            Upload Your Results
             <span class="card-sub"><?= htmlspecialchars($student["program_name"]) ?></span>
         </div>
         <div class="card-body">
             <p class="hint" style="margin-bottom:1rem;">
-                Upload the <strong>PDF provisional results statement</strong> you received from the faculty.
-                We'll read the module scores from it and let you review everything before saving.
-                Your GPA and CGPA are recalculated automatically once you save.
+                Upload either your <strong>PDF provisional results statement</strong> from the faculty,
+                <em>or</em> a <strong>screenshot / image of the results email</strong> sent to your university
+                inbox. We'll read the module scores, let you review everything, and your GPA &amp; CGPA are
+                recalculated automatically once you save.
             </p>
             <form method="POST" enctype="multipart/form-data">
                 <div class="drop-zone">
-                    <div style="font-size:2rem;">📄</div>
-                    <input type="file" name="statement" accept="application/pdf,.pdf" required>
-                    <div class="hint">PDF only · up to 8&nbsp;MB</div>
+                    <div style="font-size:2rem;">📄🖼️</div>
+                    <input type="file" name="statement"
+                           accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" required>
+                    <div class="hint">PDF or image (PNG/JPG) · up to 8&nbsp;MB</div>
                 </div>
                 <div class="actions">
-                    <button type="submit" class="btn btn-primary">Read Statement &rarr;</button>
+                    <button type="submit" class="btn btn-primary">Read My Results &rarr;</button>
                 </div>
             </form>
+            <p class="muted" style="margin-top:.8rem;">
+                Tip: for an emailed result, a clear, straight screenshot that shows the whole
+                <strong>CODE / CAT1 / CAT2 / EXAMS / TOTAL</strong> table reads best.
+            </p>
         </div>
     </div>
 
@@ -383,11 +508,16 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
                     <thead>
                         <tr>
                             <th style="width:130px">Module Code</th>
-                            <th>Module (from statement)</th>
-                            <th style="width:110px">Score (%)</th>
-                            <th style="width:70px">Grade</th>
-                            <th style="width:70px">GP</th>
-                            <th style="width:90px">Yr / Sem</th>
+                            <th>Module <?= $uploadKind === "image" ? "(matched)" : "(from statement)" ?></th>
+                            <?php if ($uploadKind === "image"): ?>
+                            <th style="width:70px">CAT 1</th>
+                            <th style="width:70px">CAT 2</th>
+                            <th style="width:70px">Exam</th>
+                            <?php endif; ?>
+                            <th style="width:100px"><?= $uploadKind === "image" ? "Total (%)" : "Score (%)" ?></th>
+                            <th style="width:60px">Grade</th>
+                            <th style="width:55px">GP</th>
+                            <th style="width:85px">Yr / Sem</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -416,6 +546,11 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
                                     <span class="tag tag-warn">needs a code</span>
                                 <?php endif; ?>
                             </td>
+                            <?php if ($uploadKind === "image"): ?>
+                            <td><input class="score-input" type="number" name="cat1[]" min="0" max="100" value="<?= (int)$r["cat1"] ?>"></td>
+                            <td><input class="score-input" type="number" name="cat2[]" min="0" max="100" value="<?= (int)$r["cat2"] ?>"></td>
+                            <td><input class="score-input" type="number" name="exam[]" min="0" max="100" value="<?= (int)$r["exam"] ?>"></td>
+                            <?php endif; ?>
                             <td><input class="score-input" type="number" name="score[]" min="0" max="100" value="<?= (int)$r["score"] ?>" required></td>
                             <td><?= htmlspecialchars($r["grade"]) ?></td>
                             <td><?= htmlspecialchars($r["gp"]) ?></td>
@@ -425,7 +560,11 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
                     </tbody>
                 </table>
                 </div>
-                <p class="muted">Grade &amp; grade point are derived automatically from the score. Modules left as “skip” won't be saved.</p>
+                <p class="muted">
+                    Grade &amp; grade point are derived automatically from the
+                    <?= $uploadKind === "image" ? "<strong>Total</strong> (the CAT/Exam marks are stored as read — correct any the scan got wrong)" : "score" ?>.
+                    Modules left as “skip” won't be saved.
+                </p>
                 <div class="actions">
                     <a class="btn btn-ghost" href="UploadResults.php">Cancel</a>
                     <button type="submit" class="btn btn-primary">Confirm &amp; Save Results</button>
