@@ -10,7 +10,7 @@ $db_pass = "";       // ← change if needed
 
 // ─── Auth: relies on the session set at student login ────────────────────────
 if (empty($_SESSION["student_ID"])) {
-    header("Location: index.html?error=session_expired");
+    header("Location: index.php?error=session_expired");
     exit();
 }
 $studentID = $_SESSION["student_ID"];
@@ -33,7 +33,7 @@ $stmtS->execute([$studentID]);
 $student = $stmtS->fetch();
 
 if (!$student) {
-    header("Location: index.html?error=invalid_session");
+    header("Location: index.php?error=invalid_session");
     exit();
 }
 
