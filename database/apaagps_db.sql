@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Jul 10, 2026 at 08:36 AM
+-- Generation Time: Jul 16, 2026 at 11:45 AM
 -- Server version: 8.4.7
--- PHP Version: 8.3.28
+-- PHP Version: 8.4.15
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS `cgpa_tb` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_cgpa_student_sem_year` (`student_ID`,`sem_no`,`year_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=113 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=160 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `cgpa_tb`
@@ -201,17 +201,24 @@ INSERT INTO `cgpa_tb` (`ID`, `student_ID`, `sem_no`, `year_no`, `total_quality_p
 (18, '100-000', 1, 1, 73.50, 17.00, 4.3235),
 (39, '100-001', 1, 1, 57.50, 17.00, 3.3824),
 (40, '200-001', 1, 1, 67.00, 17.00, 3.9412),
-(45, '200-001', 2, 1, 173.50, 42.00, 4.1310),
-(52, '200-002', 1, 1, 73.00, 17.00, 4.2941),
-(57, '200-002', 2, 1, 175.50, 42.00, 4.1786),
-(64, '200-002', 3, 2, 267.50, 64.00, 4.1797),
-(70, '200-002', 4, 2, 356.00, 84.00, 4.2381),
+(45, '200-001', 2, 1, 161.50, 42.00, 3.8452),
+(52, '200-002', 1, 1, 74.50, 17.00, 4.3824),
+(57, '200-002', 2, 1, 177.00, 42.00, 4.2143),
+(64, '200-002', 3, 2, 269.00, 64.00, 4.2031),
+(70, '200-002', 4, 2, 357.50, 84.00, 4.2560),
 (76, '200-003', 1, 1, 83.00, 17.00, 4.8824),
 (81, '200-003', 2, 1, 206.50, 42.00, 4.9167),
 (88, '200-003', 3, 2, 313.00, 64.00, 4.8906),
 (94, '200-003', 4, 2, 408.50, 84.00, 4.8631),
 (100, '200-003', 5, 3, 500.00, 103.00, 4.8544),
-(105, '200-003', 6, 3, 608.50, 125.00, 4.8680);
+(105, '200-003', 6, 3, 608.50, 125.00, 4.8680),
+(115, '432-903', 1, 1, 70.50, 17.00, 4.1471),
+(120, '432-903', 2, 1, 157.00, 38.00, 4.1316),
+(126, '432-903', 3, 2, 243.00, 60.00, 4.0500),
+(132, '200-002', 5, 3, 428.00, 103.00, 4.1553),
+(137, '200-001', 3, 2, 247.50, 64.00, 3.8672),
+(143, '200-001', 6, 3, 321.50, 82.00, 3.9207),
+(148, '200-002', 6, 3, 502.00, 121.00, 4.1488);
 
 -- --------------------------------------------------------
 
@@ -251,7 +258,7 @@ CREATE TABLE IF NOT EXISTS `gpa_tb` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_gpa_student_sem` (`student_ID`,`sem_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=88 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=130 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `gpa_tb`
@@ -266,8 +273,8 @@ INSERT INTO `gpa_tb` (`ID`, `student_ID`, `total_quality_points`, `total_credit_
 (6, '100-000', 101.00, 22.00, 4.5909, 6),
 (7, '100-001', 57.50, 17.00, 3.3824, 1),
 (15, '200-001', 67.00, 17.00, 3.9412, 1),
-(20, '200-001', 106.50, 25.00, 4.2600, 2),
-(27, '200-002', 73.00, 17.00, 4.2941, 1),
+(20, '200-001', 94.50, 25.00, 3.7800, 2),
+(27, '200-002', 74.50, 17.00, 4.3824, 1),
 (32, '200-002', 102.50, 25.00, 4.1000, 2),
 (39, '200-002', 92.00, 22.00, 4.1818, 3),
 (45, '200-002', 88.50, 20.00, 4.4250, 4),
@@ -276,7 +283,14 @@ INSERT INTO `gpa_tb` (`ID`, `student_ID`, `total_quality_points`, `total_credit_
 (63, '200-003', 106.50, 22.00, 4.8409, 3),
 (69, '200-003', 95.50, 20.00, 4.7750, 4),
 (75, '200-003', 91.50, 19.00, 4.8158, 5),
-(80, '200-003', 108.50, 22.00, 4.9318, 6);
+(80, '200-003', 108.50, 22.00, 4.9318, 6),
+(90, '432-903', 70.50, 17.00, 4.1471, 1),
+(95, '432-903', 86.50, 21.00, 4.1190, 2),
+(101, '432-903', 86.00, 22.00, 3.9091, 3),
+(107, '200-002', 70.50, 19.00, 3.7105, 5),
+(112, '200-001', 86.00, 22.00, 3.9091, 3),
+(118, '200-001', 74.00, 18.00, 4.1111, 6),
+(123, '200-002', 74.00, 18.00, 4.1111, 6);
 
 -- --------------------------------------------------------
 
@@ -310,7 +324,7 @@ INSERT INTO `grade_system` (`grade_ID`, `min_mark`, `max_mark`, `grade_point`, `
 (5, 60, 64, 3.00, 'C'),
 (6, 55, 59, 2.50, 'D+'),
 (7, 50, 54, 2.00, 'D'),
-(8, 0, 49, 0.00, '0');
+(8, 0, 49, 0.00, 'F');
 
 -- --------------------------------------------------------
 
@@ -327,7 +341,7 @@ CREATE TABLE IF NOT EXISTS `lecturer_module_tb` (
   UNIQUE KEY `uq_lecturer_module` (`lecturer_ID`,`module_code`),
   UNIQUE KEY `uq_module_one_lecturer` (`module_code`),
   KEY `module_code` (`module_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `lecturer_module_tb`
@@ -349,6 +363,7 @@ INSERT INTO `lecturer_module_tb` (`ID`, `lecturer_ID`, `module_code`) VALUES
 (19, '530292', 'BIT110'),
 (20, '530292', 'BIT126'),
 (21, '530292', 'BIT215'),
+(31, '530292', 'BIT225'),
 (22, '530292', 'FST220'),
 (23, '783482', 'BJC110'),
 (17, '932023', 'BBA116'),
@@ -396,6 +411,46 @@ INSERT INTO `lecturer_tb` (`ID`, `lecturer_ID`, `lecturer_name`, `lecturer_title
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `mark_correction_tb`
+--
+
+DROP TABLE IF EXISTS `mark_correction_tb`;
+CREATE TABLE IF NOT EXISTS `mark_correction_tb` (
+  `correction_ID` int NOT NULL AUTO_INCREMENT,
+  `report_ID` int NOT NULL,
+  `student_ID` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `module_code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `lecturer_ID` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `category` enum('CAT1','CAT2','Exam') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `old_component` int DEFAULT NULL,
+  `new_component` int DEFAULT NULL,
+  `old_total` int DEFAULT NULL,
+  `new_total` int NOT NULL,
+  `new_grade_point` decimal(3,2) NOT NULL,
+  `new_letter_grade` varchar(5) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` enum('Pending','Approved','Rejected') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Pending',
+  `lecturer_note` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `admin_note` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`correction_ID`),
+  KEY `report_ID` (`report_ID`),
+  KEY `student_ID` (`student_ID`),
+  KEY `module_code` (`module_code`),
+  KEY `lecturer_ID` (`lecturer_ID`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `mark_correction_tb`
+--
+
+INSERT INTO `mark_correction_tb` (`correction_ID`, `report_ID`, `student_ID`, `module_code`, `lecturer_ID`, `category`, `old_component`, `new_component`, `old_total`, `new_total`, `new_grade_point`, `new_letter_grade`, `status`, `lecturer_note`, `admin_note`, `created_at`, `reviewed_at`) VALUES
+(2, 4, '200-002', 'BJC110', '783482', NULL, NULL, NULL, 81, 90, 5.00, 'A', 'Approved', NULL, NULL, '2026-07-16 07:33:20', '2026-07-16 07:34:27'),
+(4, 5, '200-002', 'BBA116', '932023', 'CAT2', 13, 18, 63, 68, 3.50, 'C+', 'Approved', NULL, NULL, '2026-07-16 08:29:18', '2026-07-16 08:29:47');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `module_registration_tb`
 --
 
@@ -412,7 +467,26 @@ CREATE TABLE IF NOT EXISTS `module_registration_tb` (
   UNIQUE KEY `uq_student_module_period` (`student_ID`,`module_code`,`year_no`,`sem_no`),
   KEY `student_ID` (`student_ID`),
   KEY `module_code` (`module_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `module_registration_tb`
+--
+
+INSERT INTO `module_registration_tb` (`ID`, `student_ID`, `module_code`, `year_no`, `sem_no`, `is_retake`, `registered_at`) VALUES
+(1, '432-903', 'AGM212', 2, 3, 0, '2026-07-10 08:43:28'),
+(2, '432-903', 'BIT212', 2, 3, 0, '2026-07-10 08:43:28'),
+(3, '432-903', 'BIT213', 2, 3, 0, '2026-07-10 08:43:28'),
+(4, '432-903', 'BIT214', 2, 3, 0, '2026-07-10 08:43:28'),
+(5, '432-903', 'BIT215', 2, 3, 0, '2026-07-10 08:43:28'),
+(6, '432-903', 'COM211', 2, 3, 0, '2026-07-10 08:43:28'),
+(7, '200-001', 'BIT321', 3, 6, 0, '2026-07-10 09:09:57'),
+(8, '200-001', 'BIT322', 3, 6, 0, '2026-07-10 09:09:57'),
+(9, '200-001', 'BIT323', 3, 6, 0, '2026-07-10 09:09:57'),
+(10, '200-001', 'BIT324', 3, 6, 0, '2026-07-10 09:09:57'),
+(11, '200-001', 'BIT325', 3, 6, 0, '2026-07-10 09:09:57'),
+(12, '200-001', 'FST320', 3, 6, 0, '2026-07-10 09:09:57'),
+(13, '200-001', 'BIT126', 3, 6, 1, '2026-07-10 09:09:57');
 
 -- --------------------------------------------------------
 
@@ -436,7 +510,7 @@ CREATE TABLE IF NOT EXISTS `module_report_tb` (
   KEY `student_ID` (`student_ID`),
   KEY `module_code` (`module_code`),
   KEY `lecturer_ID` (`lecturer_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `module_report_tb`
@@ -444,7 +518,10 @@ CREATE TABLE IF NOT EXISTS `module_report_tb` (
 
 INSERT INTO `module_report_tb` (`report_ID`, `student_ID`, `module_code`, `lecturer_ID`, `category`, `message`, `status`, `lecturer_note`, `created_at`, `updated_at`) VALUES
 (1, '100-001', 'BIT111', NULL, 'Exam', 'My Exam mark is wrongly calculated', 'Submitted', NULL, '2026-07-02 06:12:12', '2026-07-02 06:12:12'),
-(2, '100-001', 'BIT113', 'LEC0329', 'CAT1', 'My CAT1 mark is different from the sheet you sent in the group', 'Resolved', NULL, '2026-07-02 06:43:26', '2026-07-02 06:52:51');
+(2, '100-001', 'BIT113', 'LEC0329', 'CAT1', 'My CAT1 mark is different from the sheet you sent in the group', 'Resolved', NULL, '2026-07-02 06:43:26', '2026-07-02 06:52:51'),
+(3, '200-002', 'BIT225', NULL, 'Exam', 'Exam Mark is too low', 'Submitted', NULL, '2026-07-15 11:40:45', '2026-07-15 11:40:45'),
+(4, '200-002', 'BJC110', '783482', 'Exam', 'Test', 'Resolved', NULL, '2026-07-15 11:42:56', '2026-07-16 07:34:27'),
+(5, '200-002', 'BBA116', '932023', 'CAT2', 'CAT2 lower than what was reported on the Whatsapp group chat', 'Resolved', NULL, '2026-07-16 08:27:42', '2026-07-16 08:30:08');
 
 -- --------------------------------------------------------
 
@@ -583,7 +660,7 @@ CREATE TABLE IF NOT EXISTS `results_tb` (
   KEY `student_ID` (`student_ID`),
   KEY `letter_grade` (`letter_grade`),
   KEY `grade_point_2` (`grade_point`)
-) ENGINE=InnoDB AUTO_INCREMENT=113 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=174 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `results_tb`
@@ -629,23 +706,23 @@ INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`
 (37, 'BIT110', '100-001', 1, 1, 14, 13, 30, 2.50, 'D+', 57, 'Pass', '2026-06-22 06:06:01'),
 (39, 'BBA116', '100-001', 1, 1, 15, 15, 39, 3.50, 'C+', 69, 'Pass', '2026-06-22 06:06:01'),
 (40, 'BJC110', '100-001', 1, 1, 16, 14, 41, 4.00, 'B', 71, 'Pass', '2026-06-22 06:06:01'),
-(41, 'BIT110', '200-001', 1, 1, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-06-30 07:00:00'),
-(42, 'BIT111', '200-001', 1, 1, 18, 17, 48, 5.00, 'A', 83, 'Pass', '2026-06-30 07:00:00'),
-(43, 'BBA116', '200-001', 1, 1, 14, 15, 38, 3.50, 'C+', 67, 'Pass', '2026-06-30 07:00:00'),
-(44, 'BIT113', '200-001', 1, 1, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-06-30 07:00:00'),
-(45, 'BJC110', '200-001', 1, 1, 13, 14, 34, 3.00, 'C', 61, 'Pass', '2026-06-30 07:00:00'),
-(46, 'BIT122', '200-001', 1, 2, 17, 18, 48, 5.00, 'A', 83, 'Pass', '2026-06-30 07:00:00'),
-(47, 'BIT123', '200-001', 1, 2, 16, 15, 42, 4.00, 'B', 73, 'Pass', '2026-06-30 07:00:00'),
-(48, 'BIT124', '200-001', 1, 2, 14, 15, 43, 4.00, 'B', 72, 'Pass', '2026-06-30 07:00:00'),
-(49, 'BIT125', '200-001', 1, 2, 15, 16, 45, 4.50, 'B+', 76, 'Pass', '2026-06-30 07:00:00'),
-(50, 'BIT126', '200-001', 1, 2, 13, 14, 33, 3.00, 'C', 60, 'Pass', '2026-06-30 07:00:00'),
-(51, 'COM122', '200-001', 1, 2, 17, 18, 49, 5.00, 'A', 84, 'Pass', '2026-06-30 07:00:00'),
+(41, 'BIT110', '200-001', 1, 1, 0, 0, 0, 4.00, 'B', 73, 'Pass', '2026-06-30 07:00:00'),
+(42, 'BIT111', '200-001', 1, 1, 0, 0, 0, 5.00, 'A', 83, 'Pass', '2026-06-30 07:00:00'),
+(43, 'BBA116', '200-001', 1, 1, 0, 0, 0, 3.50, 'C+', 67, 'Pass', '2026-06-30 07:00:00'),
+(44, 'BIT113', '200-001', 1, 1, 0, 0, 0, 4.50, 'B+', 77, 'Pass', '2026-06-30 07:00:00'),
+(45, 'BJC110', '200-001', 1, 1, 0, 0, 0, 3.00, 'C', 61, 'Pass', '2026-06-30 07:00:00'),
+(46, 'BIT122', '200-001', 1, 2, 0, 0, 0, 5.00, 'A', 83, 'Pass', '2026-06-30 07:00:00'),
+(47, 'BIT123', '200-001', 1, 2, 0, 0, 0, 4.00, 'B', 73, 'Pass', '2026-06-30 07:00:00'),
+(48, 'BIT124', '200-001', 1, 2, 0, 0, 0, 4.00, 'B', 72, 'Pass', '2026-06-30 07:00:00'),
+(49, 'BIT125', '200-001', 1, 2, 0, 0, 0, 4.50, 'B+', 76, 'Pass', '2026-06-30 07:00:00'),
+(50, 'BIT126', '200-001', 1, 2, 0, 0, 0, 0.00, 'F', 40, 'Retake', '2026-07-10 09:08:20'),
+(51, 'COM122', '200-001', 1, 2, 0, 0, 0, 5.00, 'A', 84, 'Pass', '2026-06-30 07:00:00'),
 (52, 'FST121', '200-001', 1, 2, 0, 0, 78, 4.50, 'B+', 78, 'Pass', '2026-06-30 07:00:00'),
 (53, 'BIT110', '200-002', 1, 1, 18, 19, 50, 5.00, 'A', 87, 'Pass', '2026-06-30 07:00:00'),
 (54, 'BIT111', '200-002', 1, 1, 16, 15, 41, 4.00, 'B', 72, 'Pass', '2026-06-30 07:00:00'),
-(55, 'BBA116', '200-002', 1, 1, 14, 13, 36, 3.00, 'C', 63, 'Pass', '2026-06-30 07:00:00'),
+(55, 'BBA116', '200-002', 1, 1, 14, 18, 36, 3.50, 'C+', 68, 'Pass', '2026-06-30 07:00:00'),
 (56, 'BIT113', '200-002', 1, 1, 15, 16, 40, 4.00, 'B', 71, 'Pass', '2026-06-30 07:00:00'),
-(57, 'BJC110', '200-002', 1, 1, 17, 18, 46, 5.00, 'A', 81, 'Pass', '2026-06-30 07:00:00'),
+(57, 'BJC110', '200-002', 1, 1, 17, 18, 55, 5.00, 'A', 90, 'Pass', '2026-06-30 07:00:00'),
 (58, 'BIT122', '200-002', 1, 2, 15, 14, 38, 3.50, 'C+', 67, 'Pass', '2026-06-30 07:00:00'),
 (59, 'BIT123', '200-002', 1, 2, 16, 17, 43, 4.50, 'B+', 76, 'Pass', '2026-06-30 07:00:00'),
 (60, 'BIT124', '200-002', 1, 2, 13, 12, 31, 2.50, 'D+', 56, 'Pass', '2026-06-30 07:00:00'),
@@ -700,7 +777,45 @@ INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`
 (109, 'BIT324', '200-003', 3, 6, 18, 19, 49, 5.00, 'A', 86, 'Pass', '2026-06-30 07:00:00'),
 (110, 'BIT322', '200-003', 3, 6, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-06-30 07:00:00'),
 (111, 'FST320', '200-003', 3, 6, 0, 0, 95, 5.00, 'A', 95, 'Pass', '2026-06-30 07:00:00'),
-(112, 'BIT113', '100-001', 1, 1, 16, 19, 45, 5.00, 'A', 80, 'Pass', '2026-07-02 06:50:30');
+(112, 'BIT113', '100-001', 1, 1, 16, 19, 45, 5.00, 'A', 80, 'Pass', '2026-07-02 06:50:30'),
+(114, 'BBA116', '432-903', 1, 1, 0, 0, 0, 3.50, 'C+', 69, 'Pass', '2026-07-14 07:51:24'),
+(115, 'BIT110', '432-903', 1, 1, 0, 0, 0, 4.50, 'B+', 77, 'Pass', '2026-07-14 07:51:24'),
+(116, 'BIT111', '432-903', 1, 1, 0, 0, 0, 5.00, 'A', 80, 'Pass', '2026-07-14 07:51:24'),
+(117, 'BIT113', '432-903', 1, 1, 0, 0, 0, 5.00, 'A', 86, 'Pass', '2026-07-14 07:51:24'),
+(118, 'BJC110', '432-903', 1, 1, 0, 0, 0, 3.00, 'C', 60, 'Pass', '2026-07-14 07:51:24'),
+(119, 'BIT122', '432-903', 1, 2, 0, 0, 0, 4.00, 'B', 70, 'Pass', '2026-07-14 07:51:24'),
+(120, 'BIT123', '432-903', 1, 2, 0, 0, 0, 4.00, 'B', 74, 'Pass', '2026-07-14 07:51:24'),
+(121, 'BIT124', '432-903', 1, 2, 0, 0, 0, 5.00, 'A', 81, 'Pass', '2026-07-14 07:51:24'),
+(122, 'BIT125', '432-903', 1, 2, 0, 0, 0, 2.50, 'D+', 58, 'Pass', '2026-07-14 07:51:24'),
+(123, 'BIT126', '432-903', 1, 2, 0, 0, 0, 4.50, 'B+', 76, 'Pass', '2026-07-14 07:51:24'),
+(124, 'COM122', '432-903', 1, 2, 0, 0, 0, 4.50, 'B+', 78, 'Pass', '2026-07-14 07:51:24'),
+(136, 'AGM212', '432-903', 2, 3, 0, 0, 0, 3.00, 'C', 60, 'Pass', '2026-07-14 10:07:29'),
+(137, 'BIT212', '432-903', 2, 3, 0, 0, 0, 3.00, 'C', 64, 'Pass', '2026-07-14 10:07:30'),
+(138, 'BIT213', '432-903', 2, 3, 0, 0, 0, 5.00, 'A', 81, 'Pass', '2026-07-14 10:07:30'),
+(139, 'BIT214', '432-903', 2, 3, 0, 0, 0, 4.00, 'B', 70, 'Pass', '2026-07-14 10:07:30'),
+(140, 'BIT215', '432-903', 2, 3, 0, 0, 0, 3.00, 'C', 63, 'Pass', '2026-07-14 10:07:30'),
+(141, 'COM211', '432-903', 2, 3, 0, 0, 0, 5.00, 'A', 85, 'Pass', '2026-07-14 10:07:30'),
+(142, 'BIT311', '200-002', 3, 5, 16, 16, 36, 3.50, 'C+', 68, 'Pass', '2026-07-16 06:41:13'),
+(143, 'BIS313', '200-002', 3, 5, 18, 19, 40, 4.00, 'B', 70, 'Pass', '2026-07-16 06:41:13'),
+(144, 'BIT315', '200-002', 3, 5, 15, 14, 44, 4.00, 'B', 73, 'Pass', '2026-07-16 06:41:13'),
+(145, 'BIT312', '200-002', 3, 5, 17, 15, 35, 3.50, 'C+', 65, 'Pass', '2026-07-16 06:41:13'),
+(146, 'BIT314', '200-002', 3, 5, 19, 16, 30, 3.50, 'C+', 65, 'Pass', '2026-07-16 06:41:13'),
+(158, 'AGM212', '200-001', 2, 3, 0, 0, 0, 3.00, 'C', 60, 'Pass', '2026-07-16 07:01:49'),
+(159, 'BIT212', '200-001', 2, 3, 0, 0, 0, 3.00, 'C', 64, 'Pass', '2026-07-16 07:01:49'),
+(160, 'BIT213', '200-001', 2, 3, 0, 0, 0, 5.00, 'A', 81, 'Pass', '2026-07-16 07:01:49'),
+(161, 'BIT214', '200-001', 2, 3, 0, 0, 0, 4.00, 'B', 70, 'Pass', '2026-07-16 07:01:49'),
+(162, 'BIT215', '200-001', 2, 3, 0, 0, 0, 3.00, 'C', 63, 'Pass', '2026-07-16 07:01:49'),
+(163, 'COM211', '200-001', 2, 3, 0, 0, 0, 5.00, 'A', 85, 'Pass', '2026-07-16 07:01:49'),
+(164, 'BIT321', '200-001', 3, 6, 19, 16, 40, 4.50, 'B+', 75, 'Pass', '2026-07-16 07:11:31'),
+(165, 'BIT325', '200-001', 3, 6, 15, 17, 45, 4.50, 'B+', 77, 'Pass', '2026-07-16 07:11:31'),
+(166, 'BIT322', '200-001', 3, 6, 14, 16, 36, 3.50, 'C+', 66, 'Pass', '2026-07-16 07:11:31'),
+(167, 'BIT324', '200-001', 3, 6, 18, 17, 39, 4.00, 'B', 74, 'Pass', '2026-07-16 07:11:31'),
+(168, 'BIT323', '200-001', 3, 6, 13, 19, 41, 4.00, 'B', 73, 'Pass', '2026-07-16 07:11:31'),
+(169, 'BIT321', '200-002', 3, 6, 19, 16, 40, 4.50, 'B+', 75, 'Pass', '2026-07-16 07:13:26'),
+(170, 'BIT325', '200-002', 3, 6, 15, 17, 45, 4.50, 'B+', 77, 'Pass', '2026-07-16 07:13:26'),
+(171, 'BIT322', '200-002', 3, 6, 14, 16, 36, 3.50, 'C+', 66, 'Pass', '2026-07-16 07:13:26'),
+(172, 'BIT324', '200-002', 3, 6, 18, 17, 39, 4.00, 'B', 74, 'Pass', '2026-07-16 07:13:26'),
+(173, 'BIT323', '200-002', 3, 6, 13, 19, 41, 4.00, 'B', 73, 'Pass', '2026-07-16 07:13:26');
 
 --
 -- Triggers `results_tb`
@@ -780,7 +895,7 @@ CREATE TABLE IF NOT EXISTS `student_tb` (
   `mode_of_entry` enum('Direct','Transfer','Foundation','Mature','Diploma') COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`ID`),
   UNIQUE KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `student_tb`
@@ -791,7 +906,8 @@ INSERT INTO `student_tb` (`ID`, `student_ID`, `student_name`, `student_email`, `
 (2, '100-001', 'Mary Jane', 'mj100001@students.cavendish.ac.ug', '$2y$10$wESqlg45fvQgo', 'BIT', 'F', 'Kenyan', '1999-04-20', 2024, 'JAN', 'Direct'),
 (3, '200-001', 'Amara Nakato', 'an200001@students.cavendish.ac.ug', '$2y$10$UxrzEyQiiQ..8XE0loW8n.0lNtR72XqSmxCijgssaPCzodvVjsFmu', 'BIT', 'F', 'Ugandan', '2002-03-15', 2023, 'AUG', 'Direct'),
 (4, '200-002', 'Brian Otieno', 'bo200002@students.cavendish.ac.ug', '$2y$10$K0nnYR/qK/T49IJEvCuclurHJ8GKhiUv.fBMivJkfth6ZLQ/uzt.i', 'BIT', 'M', 'Kenyan', '2001-07-22', 2022, 'JAN', 'Direct'),
-(5, '200-003', 'Chidi Okonkwo', 'co200003@students.cavendish.ac.ug', '$2y$10$uUwNPA3Prg.Q.qL6hH3Uy.fI8Z68L4HbfvFx/TuPyh8gmWgMCZhpq', 'BIT', 'M', 'Nigerian', '2001-11-05', 2021, 'AUG', 'Direct');
+(5, '200-003', 'Chidi Okonkwo', 'co200003@students.cavendish.ac.ug', '$2y$10$uUwNPA3Prg.Q.qL6hH3Uy.fI8Z68L4HbfvFx/TuPyh8gmWgMCZhpq', 'BIT', 'M', 'Nigerian', '2001-11-05', 2021, 'AUG', 'Direct'),
+(6, '432-903', 'Nalwanga Sylvia', 'ns432903@students.cavendish.ac.ug', '$2y$10$NHMR/9pCjM6drBiUkMwNkuGbj7LfZLB.21kKikPA9zEbjcVS3fLX2', 'BIT', 'F', 'Ugandan', '2001-04-20', 2025, 'JAN', 'Direct');
 
 -- --------------------------------------------------------
 
@@ -864,6 +980,15 @@ ALTER TABLE `gpa_tb`
 ALTER TABLE `lecturer_module_tb`
   ADD CONSTRAINT `fk_lecturer_module_lecturer` FOREIGN KEY (`lecturer_ID`) REFERENCES `lecturer_tb` (`lecturer_ID`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_lecturer_module_module` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `mark_correction_tb`
+--
+ALTER TABLE `mark_correction_tb`
+  ADD CONSTRAINT `fk_corr_lecturer` FOREIGN KEY (`lecturer_ID`) REFERENCES `lecturer_tb` (`lecturer_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_corr_module` FOREIGN KEY (`module_code`) REFERENCES `module_tb` (`module_code`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_corr_report` FOREIGN KEY (`report_ID`) REFERENCES `module_report_tb` (`report_ID`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_corr_student` FOREIGN KEY (`student_ID`) REFERENCES `student_tb` (`student_ID`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `module_registration_tb`
