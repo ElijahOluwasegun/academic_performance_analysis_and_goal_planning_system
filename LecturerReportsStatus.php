@@ -61,23 +61,28 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["report_ID"])) {
     if (!in_array($newStatus, $allowedStatuses, true)) {
         $updateMessage = ["type" => "error", "text" => "Invalid status selected."];
     } else {
-        // Only allow updating reports that actually belong to this lecturer's modules
+        // Ownership = the report's module is CURRENTLY assigned to this lecturer.
+        // (Reports store the lecturer at submission time, which may be NULL if the
+        //  module wasn't assigned yet, so we check the live assignment instead.)
         $stmtOwns = $pdo->prepare("
-            SELECT report_ID, student_ID, module_code, category
-            FROM   module_report_tb
-            WHERE  report_ID = ? AND lecturer_ID = ?
+            SELECT mr.report_ID, mr.student_ID, mr.module_code, mr.category
+            FROM   module_report_tb mr
+            JOIN   lecturer_module_tb lm
+                   ON lm.module_code = mr.module_code AND lm.lecturer_ID = ?
+            WHERE  mr.report_ID = ?
         ");
-        $stmtOwns->execute([$reportID, $lecturerID]);
+        $stmtOwns->execute([$lecturerID, $reportID]);
         $ownRow = $stmtOwns->fetch();
 
         if (!$ownRow) {
             $updateMessage = ["type" => "error", "text" => "You can only update reports assigned to your modules."];
         } else {
-            // 1) Update the report's status + note (always)
+            // 1) Update the report's status + note, and stamp this lecturer as the
+            //    owner (claims reports that were submitted with a NULL lecturer_ID).
             $pdo->prepare("
-                UPDATE module_report_tb SET status = ?, lecturer_note = ?
-                WHERE report_ID = ? AND lecturer_ID = ?
-            ")->execute([$newStatus, $note !== '' ? $note : null, $reportID, $lecturerID]);
+                UPDATE module_report_tb SET status = ?, lecturer_note = ?, lecturer_ID = ?
+                WHERE report_ID = ?
+            ")->execute([$newStatus, $note !== '' ? $note : null, $lecturerID, $reportID]);
 
             $msgText = "Report #{$reportID} updated to \"{$newStatus}\".";
 
@@ -155,10 +160,10 @@ $stmtReports = $pdo->prepare("
            res.final_total AS current_total, res.letter_grade AS current_grade,
            res.cat1_mk AS c1, res.cat2_mk AS c2, res.exam_mk AS ex
     FROM   module_report_tb mr
+    JOIN   lecturer_module_tb lm ON lm.module_code = mr.module_code AND lm.lecturer_ID = ?
     JOIN   module_tb  m   ON mr.module_code = m.module_code
     JOIN   student_tb s   ON mr.student_ID  = s.student_ID
     LEFT JOIN results_tb res ON res.student_ID = mr.student_ID AND res.module_code = mr.module_code
-    WHERE  mr.lecturer_ID = ?
     ORDER  BY
         CASE mr.status WHEN 'Submitted' THEN 0 WHEN 'Reviewing' THEN 1 ELSE 2 END,
         mr.created_at DESC
