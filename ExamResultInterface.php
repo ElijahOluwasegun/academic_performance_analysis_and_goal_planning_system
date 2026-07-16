@@ -259,6 +259,8 @@ $canPrintTranscript = $isFinalYear && $allModulesMarked;
         .hu-name { color: #fff; font-weight: 700; font-size: .85rem; }
         .hu-sid  { color: #c7cede; font-size: .72rem; }
         .hu-avatar { width: 2.4rem; height: 2.4rem; border-radius: 50%; background: #c9a227; color: #16213f; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: .82rem; flex: 0 0 auto; }
+        .logout-btn { color: #cdd6ef; font-size: .8rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: .35rem .9rem; white-space: nowrap; transition: background .15s, color .15s; }
+        .logout-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
 
         /* ── Tab nav ── */
         .tab-nav { display: flex; gap: .35rem; padding: 0 1.5rem; background: #16213f; border-bottom: 1px solid #0d1730; }
@@ -434,6 +436,7 @@ $canPrintTranscript = $isFinalYear && $allModulesMarked;
             <span class="hu-sid">SID <?= htmlspecialchars($student["student_ID"]) ?></span>
         </div>
         <div class="hu-avatar"><?= htmlspecialchars($initials) ?></div>
+        <a class="logout-btn" href="logout.php">Log out</a>
     </div>
 </header>
 

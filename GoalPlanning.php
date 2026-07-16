@@ -599,7 +599,9 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
         .header-text { display: flex; flex-direction: column; line-height: 1.25; }
         .site-header .uni-name { font-weight: 600; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #d9c581; }
         .site-header .portal-title { font-weight: 700; font-size: 1.05rem; color: #fff; }
-        .header-right { margin-left: auto; width: 1px; }
+        .header-right { margin-left: auto; }
+        .logout-btn { color: #cdd6ef; font-size: .8rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: .35rem .9rem; white-space: nowrap; transition: background .15s, color .15s; }
+        .logout-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
 
         .tab-nav { display: flex; gap: .35rem; padding: 0 1.5rem; background: #16213f; border-bottom: 1px solid #0d1730; }
         .tab-btn {
@@ -805,7 +807,7 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
         <span class="uni-name">Cavendish University</span>
         <span class="portal-title">Academic Performance and Goal Planning</span>
     </div>
-    <div class="header-right"></div>
+    <div class="header-right"><a class="logout-btn" href="logout.php">Log out</a></div>
 </header>
 
 <nav class="tab-nav">
