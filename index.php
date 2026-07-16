@@ -125,7 +125,7 @@
                     Don't have an account? <a href="StudentRegister.php">Register here</a>
                 </p>
 
-                <p class="staff-link">Are you a lecturer? <a href="lecturerLoginInterface.php">Go to the lecturer portal</a></p>
+                <p class="staff-link">Are you a lecturer? <a href="LecturerLoginInterface.php">Go to the lecturer portal</a></p>
             </div>
         </section>
 
