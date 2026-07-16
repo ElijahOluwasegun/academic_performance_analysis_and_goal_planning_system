@@ -123,10 +123,12 @@ function findTesseract(): ?string {
 }
 
 /** Run OCR on an image and return the recognised text ('' on failure). */
-function ocrImage(string $imgPath, string $bin): string {
-    // --psm 6 = treat the image as a single uniform block (good for tables);
-    // "stdout" tells tesseract to write the text to standard output.
-    $cmd = escapeshellarg($bin) . ' ' . escapeshellarg($imgPath) . ' stdout --psm 6 2>&1';
+function ocrImage(string $imgPath, string $bin, int $psm = 4): string {
+    // PSM 4 = "single column of text of variable sizes" — reads an emailed
+    // results table row by row (e.g. "BIT311 16% 16% 36% 68%"), which is what we
+    // need. (PSM 6 fails to read bordered result tables — it stops at the header.)
+    // "stdout" tells tesseract to write the recognised text to standard output.
+    $cmd = escapeshellarg($bin) . ' ' . escapeshellarg($imgPath) . ' stdout --psm ' . $psm . ' 2>&1';
     $out = @shell_exec($cmd);
     return is_string($out) ? $out : "";
 }
@@ -174,6 +176,25 @@ function parseEmailResults(string $text): array {
     return $rows;
 }
 
+/**
+ * Parse a PROVISIONAL-STATEMENT image (CODE | MODULE | GRADE | SCORE) from OCR
+ * text. Each module sits on its own line, e.g. "BBA116 Basic Statistics C+ 67%".
+ * We take the module code and the LAST percentage on the line as the score.
+ * (Using the last % means an email row like "BIT311 16% 16% 36% 68%" would also
+ * yield the correct Total, so this is a safe general fallback.)
+ * Returns rows of ['code','total'] — no CAT/Exam breakdown on a statement.
+ */
+function parseProvisionalResults(string $text): array {
+    $rows = [];
+    foreach (preg_split('/\R/', $text) as $line) {
+        if (!preg_match('/\b([A-Z]{2,4}\d{3})\b/', $line, $cm)) { continue; }
+        if (preg_match_all('/(\d{1,3})\s*%/', $line, $pm) && !empty($pm[1])) {
+            $rows[] = ["code" => strtoupper($cm[1]), "total" => (int)end($pm[1])];
+        }
+    }
+    return $rows;
+}
+
 // Curriculum for this program: name → module row, and code → module row
 $stmtCur = $pdo->prepare("
     SELECT module_code, module_name, year_no, sem_no, credit_unit
@@ -199,6 +220,7 @@ $previewRows = [];         // [ ['code','name','score','cat1','cat2','exam','yea
 $pdfStudentNo = "";
 $summary     = null;
 $uploadKind  = "pdf";      // pdf (provisional statement) | image (email screenshot)
+$showCatColumns = false;   // true only when we have CAT1/CAT2/Exam data (email image)
 
 // ── PHASE 3: SAVE confirmed rows ──────────────────────────────────────────────
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save") {
@@ -311,7 +333,8 @@ elseif ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_FILES["statement"])) {
             $error = "Couldn't read that PDF: " . $e->getMessage();
         }
 
-    // ── Image: emailed results screenshot: CODE + CAT1 + CAT2 + EXAM + TOTAL ──
+    // ── Image (screenshot/photo): could be an EMAIL result table OR a
+    //    PROVISIONAL statement. OCR once, then try both parsers. ──────────────
     } elseif (in_array($ext, IMAGE_EXTS, true)) {
         $uploadKind = "image";
         $bin = findTesseract();
@@ -320,21 +343,49 @@ elseif ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_FILES["statement"])) {
                    . "Install Tesseract-OCR (or ask your administrator), then try again — "
                    . "or upload your PDF provisional statement instead.";
         } else {
-            $text = ocrImage($f["tmp_name"], $bin);
-            if (preg_match('/SID[:\s]*([0-9]{3}-?[0-9]{3})/i', $text, $mn)) {
-                $digits = str_replace("-", "", $mn[1]);
-                $pdfStudentNo = preg_replace('/^(\d{3})(\d{3})$/', '$1-$2', $digits);
+            // PSM 4 ("single column") reads both layouts row by row. Fall back to
+            // PSM 11 (sparse text) for an email table OCR split into columns.
+            $text      = ocrImage($f["tmp_name"], $bin, 4);
+            $emailRows = parseEmailResults($text);
+            if (empty($emailRows)) {
+                $text2 = ocrImage($f["tmp_name"], $bin, 11);
+                $e2    = parseEmailResults($text2);
+                if (!empty($e2)) { $emailRows = $e2; $text = $text2; }
             }
-            foreach (parseEmailResults($text) as $r) {
-                $m = $moduleByCode[$r["code"]] ?? null;
-                $g = gradeFromScore((int)$r["total"], $grades);
-                $previewRows[] = [
-                    "code"  => $m["module_code"] ?? "", "name" => $m["module_name"] ?? $r["code"], "score" => (int)$r["total"],
-                    "cat1"  => (int)$r["cat1"], "cat2" => (int)$r["cat2"], "exam" => (int)$r["exam"],
-                    "year"  => $m["year_no"] ?? null, "sem" => $m["sem_no"] ?? null,
-                    "grade" => $g["letter_grade"], "gp" => $g["grade_point"], "matched" => $m !== null,
-                ];
+
+            // Student number appears as "SID: 200002" (email) or "200-001" (statement)
+            if (preg_match('/(\d{3})\s*-\s*(\d{3})/', $text, $mn)
+                || preg_match('/SID[:\s]*(\d{3})-?(\d{3})/i', $text, $mn)) {
+                $pdfStudentNo = $mn[1] . '-' . $mn[2];
             }
+
+            if (!empty($emailRows)) {
+                // ── EMAIL results table: full CAT1 / CAT2 / Exam / Total ──
+                $showCatColumns = true;
+                foreach ($emailRows as $r) {
+                    $m = $moduleByCode[$r["code"]] ?? null;
+                    $g = gradeFromScore((int)$r["total"], $grades);
+                    $previewRows[] = [
+                        "code"  => $m["module_code"] ?? "", "name" => $m["module_name"] ?? $r["code"], "score" => (int)$r["total"],
+                        "cat1"  => (int)$r["cat1"], "cat2" => (int)$r["cat2"], "exam" => (int)$r["exam"],
+                        "year"  => $m["year_no"] ?? null, "sem" => $m["sem_no"] ?? null,
+                        "grade" => $g["letter_grade"], "gp" => $g["grade_point"], "matched" => $m !== null,
+                    ];
+                }
+            } else {
+                // ── PROVISIONAL statement image: code + total score only ──
+                foreach (parseProvisionalResults($text) as $r) {
+                    $m = $moduleByCode[$r["code"]] ?? null;
+                    $g = gradeFromScore((int)$r["total"], $grades);
+                    $previewRows[] = [
+                        "code"  => $m["module_code"] ?? "", "name" => $m["module_name"] ?? $r["code"], "score" => (int)$r["total"],
+                        "cat1"  => null, "cat2" => null, "exam" => null,
+                        "year"  => $m["year_no"] ?? null, "sem" => $m["sem_no"] ?? null,
+                        "grade" => $g["letter_grade"], "gp" => $g["grade_point"], "matched" => $m !== null,
+                    ];
+                }
+            }
+
             if (empty($previewRows)) {
                 $error = "Couldn't read any results from that image. Make sure the whole results table is visible and the text is sharp, then try again.";
             } else {
@@ -369,6 +420,8 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
         .header-text { display: flex; flex-direction: column; line-height: 1.25; }
         .site-header .uni-name { font-weight: 600; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #d9c581; }
         .site-header .portal-title { font-weight: 700; font-size: 1.05rem; color: #fff; }
+        .logout-btn { margin-left: auto; color: #cdd6ef; font-size: .8rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: .35rem .9rem; white-space: nowrap; transition: background .15s, color .15s; }
+        .logout-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
 
         .tab-nav { display: flex; gap: .35rem; padding: 0 1.5rem; background: #16213f; border-bottom: 1px solid #0d1730; }
         .tab-btn { padding: .8rem 1.1rem .7rem; border: none; background: transparent; font-size: .85rem; font-weight: 600; cursor: pointer; color: rgba(255,255,255,.68); text-decoration: none; border-bottom: 3px solid transparent; }
@@ -422,6 +475,7 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
         <span class="uni-name">Cavendish University</span>
         <span class="portal-title">Academic Performance and Goal Planning</span>
     </div>
+    <a class="logout-btn" href="logout.php">Log out</a>
 </header>
 
 <nav class="tab-nav">
@@ -452,10 +506,11 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
         </div>
         <div class="card-body">
             <p class="hint" style="margin-bottom:1rem;">
-                Upload either your <strong>PDF provisional results statement</strong> from the faculty,
-                <em>or</em> a <strong>screenshot / image of the results email</strong> sent to your university
-                inbox. We'll read the module scores, let you review everything, and your GPA &amp; CGPA are
-                recalculated automatically once you save.
+                Upload any of these — we'll detect the type automatically:
+                your <strong>PDF provisional statement</strong>, a <strong>screenshot of your
+                provisional statement</strong>, or a <strong>screenshot of the results email</strong>
+                sent to your university inbox. We'll read the scores, let you review everything, and your
+                GPA &amp; CGPA are recalculated automatically once you save.
             </p>
             <form method="POST" enctype="multipart/form-data">
                 <div class="drop-zone">
@@ -508,13 +563,13 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
                     <thead>
                         <tr>
                             <th style="width:130px">Module Code</th>
-                            <th>Module <?= $uploadKind === "image" ? "(matched)" : "(from statement)" ?></th>
-                            <?php if ($uploadKind === "image"): ?>
+                            <th>Module <?= $showCatColumns ? "(matched)" : "(from statement)" ?></th>
+                            <?php if ($showCatColumns): ?>
                             <th style="width:70px">CAT 1</th>
                             <th style="width:70px">CAT 2</th>
                             <th style="width:70px">Exam</th>
                             <?php endif; ?>
-                            <th style="width:100px"><?= $uploadKind === "image" ? "Total (%)" : "Score (%)" ?></th>
+                            <th style="width:100px"><?= $showCatColumns ? "Total (%)" : "Score (%)" ?></th>
                             <th style="width:60px">Grade</th>
                             <th style="width:55px">GP</th>
                             <th style="width:85px">Yr / Sem</th>
@@ -546,7 +601,7 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
                                     <span class="tag tag-warn">needs a code</span>
                                 <?php endif; ?>
                             </td>
-                            <?php if ($uploadKind === "image"): ?>
+                            <?php if ($showCatColumns): ?>
                             <td><input class="score-input" type="number" name="cat1[]" min="0" max="100" value="<?= (int)$r["cat1"] ?>"></td>
                             <td><input class="score-input" type="number" name="cat2[]" min="0" max="100" value="<?= (int)$r["cat2"] ?>"></td>
                             <td><input class="score-input" type="number" name="exam[]" min="0" max="100" value="<?= (int)$r["exam"] ?>"></td>
@@ -562,7 +617,7 @@ usort($allModules, fn($a, $b) => [$a["sem_no"], $a["module_code"]] <=> [$b["sem_
                 </div>
                 <p class="muted">
                     Grade &amp; grade point are derived automatically from the
-                    <?= $uploadKind === "image" ? "<strong>Total</strong> (the CAT/Exam marks are stored as read — correct any the scan got wrong)" : "score" ?>.
+                    <?= $showCatColumns ? "<strong>Total</strong> (the CAT/Exam marks are stored as read — correct any the scan got wrong)" : "score" ?>.
                     Modules left as “skip” won't be saved.
                 </p>
                 <div class="actions">
