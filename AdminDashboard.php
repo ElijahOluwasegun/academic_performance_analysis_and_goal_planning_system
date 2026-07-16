@@ -24,11 +24,89 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
-// ─── Handle POST (assign / unassign) — PRG pattern ───────────────────────────
+// ─── Grade scale (to derive letter/GP when approving a corrected mark) ────────
+$grades = $pdo->query("SELECT min_mark, max_mark, letter_grade, grade_point FROM grade_system")->fetchAll();
+function gradeFromScore(int $score, array $grades): array {
+    foreach ($grades as $g) {
+        if ($score >= (int)$g["min_mark"] && $score <= (int)$g["max_mark"]) {
+            return ["letter_grade" => $g["letter_grade"], "grade_point" => $g["grade_point"]];
+        }
+    }
+    return ["letter_grade" => "0", "grade_point" => "0.00"];
+}
+
+// ─── Handle POST (assign / unassign / mark-correction review) — PRG pattern ──
 $flashMessage = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action     = $_POST['action']      ?? '';
+    $action = $_POST['action'] ?? '';
+
+    // ── Mark-correction review: approve or reject a lecturer's proposed mark ──
+    if ($action === 'approve_correction' || $action === 'reject_correction') {
+        $corrID    = (int)($_POST['correction_id'] ?? 0);
+        $adminNote = trim($_POST['admin_note'] ?? '');
+
+        $cs = $pdo->prepare("SELECT * FROM mark_correction_tb WHERE correction_ID = ? AND status = 'Pending'");
+        $cs->execute([$corrID]);
+        $corr = $cs->fetch();
+
+        if (!$corr) {
+            header('Location: AdminDashboard.php?msg=corr_missing');
+            exit();
+        }
+
+        if ($action === 'reject_correction') {
+            $pdo->prepare("UPDATE mark_correction_tb SET status='Rejected', admin_note=?, reviewed_at=NOW() WHERE correction_ID=?")
+                ->execute([$adminNote !== '' ? $adminNote : null, $corrID]);
+            header('Location: AdminDashboard.php?msg=corr_rejected');
+            exit();
+        }
+
+        // Approve → write the corrected COMPONENT (CAT1/CAT2/Exam) + recomputed
+        // total into results_tb, which fires the GPA/CGPA recalculation trigger.
+        $newTotal  = (int)$corr['new_total'];
+        $g         = gradeFromScore($newTotal, $grades);
+        $passStat  = $newTotal >= 50 ? 'Pass' : 'Retake';
+        $catColumn = ['CAT1' => 'cat1_mk', 'CAT2' => 'cat2_mk', 'Exam' => 'exam_mk'];
+        $col       = $catColumn[$corr['category']] ?? null;
+        try {
+            $pdo->beginTransaction();
+
+            if ($col !== null && $corr['new_component'] !== null) {
+                // Update the exact reported component ($col is from a fixed whitelist)
+                $pdo->prepare("
+                    UPDATE results_tb
+                    SET {$col} = ?, final_total = ?, grade_point = ?, letter_grade = ?, status_retake_pass = ?
+                    WHERE student_ID = ? AND module_code = ?
+                ")->execute([(int)$corr['new_component'], $newTotal, $g['grade_point'], $g['letter_grade'], $passStat,
+                             $corr['student_ID'], $corr['module_code']]);
+            } else {
+                // Fallback for legacy corrections with no component recorded → total only
+                $pdo->prepare("
+                    UPDATE results_tb
+                    SET final_total = ?, grade_point = ?, letter_grade = ?, status_retake_pass = ?
+                    WHERE student_ID = ? AND module_code = ?
+                ")->execute([$newTotal, $g['grade_point'], $g['letter_grade'], $passStat,
+                             $corr['student_ID'], $corr['module_code']]);
+            }
+
+            $pdo->prepare("UPDATE mark_correction_tb SET status='Approved', admin_note=?, reviewed_at=NOW() WHERE correction_ID=?")
+                ->execute([$adminNote !== '' ? $adminNote : null, $corrID]);
+
+            // Close the loop: mark the originating student report as resolved
+            $pdo->prepare("UPDATE module_report_tb SET status='Resolved' WHERE report_ID=?")
+                ->execute([$corr['report_ID']]);
+
+            $pdo->commit();
+        } catch (PDOException $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            header('Location: AdminDashboard.php?msg=error');
+            exit();
+        }
+        header('Location: AdminDashboard.php?msg=corr_approved');
+        exit();
+    }
+
     $lecturerID = trim($_POST['lecturer_id'] ?? '');
     $moduleCode = trim($_POST['module_code']  ?? '');
 
@@ -70,11 +148,14 @@ $msgType = null;
 $msgText = null;
 if (isset($_GET['msg'])) {
     match($_GET['msg']) {
-        'assigned'     => [$msgType, $msgText] = ['success', 'Module assigned successfully.'],
-        'unassigned'   => [$msgType, $msgText] = ['success', 'Module removed from lecturer.'],
-        'module_taken' => [$msgType, $msgText] = ['error',   'That module is already assigned to another lecturer.'],
-        'error'        => [$msgType, $msgText] = ['error',   'Something went wrong. Please try again.'],
-        default        => null,
+        'assigned'      => [$msgType, $msgText] = ['success', 'Module assigned successfully.'],
+        'unassigned'    => [$msgType, $msgText] = ['success', 'Module removed from lecturer.'],
+        'module_taken'  => [$msgType, $msgText] = ['error',   'That module is already assigned to another lecturer.'],
+        'corr_approved' => [$msgType, $msgText] = ['success', 'Mark correction approved — the student\'s record and GPA have been updated.'],
+        'corr_rejected' => [$msgType, $msgText] = ['success', 'Mark correction rejected. The student\'s mark was left unchanged.'],
+        'corr_missing'  => [$msgType, $msgText] = ['error',   'That correction was not found or has already been reviewed.'],
+        'error'         => [$msgType, $msgText] = ['error',   'Something went wrong. Please try again.'],
+        default         => null,
     };
 }
 
@@ -113,6 +194,21 @@ $totalLecturers    = count($lecturers);
 $assignedModCodes  = $pdo->query("SELECT DISTINCT module_code FROM lecturer_module_tb")->fetchAll(PDO::FETCH_COLUMN);
 $totalAssigned     = count($assignedModCodes);
 $totalUnassigned   = $totalModules - $totalAssigned;
+
+// ─── Pending mark corrections awaiting admin review ──────────────────────────
+$pendingCorrections = $pdo->query("
+    SELECT c.correction_ID, c.report_ID, c.old_total, c.new_total, c.new_letter_grade,
+           c.new_grade_point, c.old_component, c.new_component, c.lecturer_note, c.created_at, c.module_code,
+           s.student_name, s.student_ID, m.module_name,
+           l.lecturer_name, r.category, r.message
+    FROM   mark_correction_tb c
+    JOIN   student_tb s ON c.student_ID  = s.student_ID
+    JOIN   module_tb  m ON c.module_code = m.module_code
+    LEFT JOIN lecturer_tb      l ON c.lecturer_ID = l.lecturer_ID
+    LEFT JOIN module_report_tb r ON c.report_ID   = r.report_ID
+    WHERE  c.status = 'Pending'
+    ORDER  BY c.created_at ASC
+")->fetchAll();
 
 // Highlight the lecturer card that was just modified
 $highlightLec = $_GET['lec'] ?? null;
@@ -190,6 +286,24 @@ $highlightLec = $_GET['lec'] ?? null;
             margin-bottom: 1rem; padding-bottom: .5rem;
             border-bottom: 2px solid #d9dce8;
         }
+
+        /* ── Pending mark corrections ── */
+        .corr-section { margin-bottom: 1.8rem; }
+        .corr-card { background: #fff; border: 1px solid #f0c891; border-left: 4px solid #d97706; border-radius: 9px; padding: 1rem 1.2rem; margin-bottom: .9rem; }
+        .corr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
+        .corr-mod { font-weight: 700; font-size: .95rem; color: #16213f; }
+        .corr-meta { font-size: .8rem; color: #666; margin-top: .15rem; }
+        .corr-change { display: inline-flex; align-items: center; gap: .5rem; font-size: .95rem; background: #fff7e6; border: 1px solid #f0d49a; border-radius: 8px; padding: .35rem .7rem; white-space: nowrap; }
+        .corr-change .old { color: #991b1b; text-decoration: line-through; font-weight: 600; }
+        .corr-change .new { color: #065f46; font-weight: 700; }
+        .corr-msg { font-size: .82rem; color: #333; background: #f7f8fa; border-radius: 6px; padding: .6rem .8rem; margin: .6rem 0; line-height: 1.5; }
+        .corr-msg .lab { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #777; display: block; margin-bottom: .25rem; }
+        .corr-actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-top: .5rem; }
+        .corr-actions input.admin-note { flex: 1 1 220px; padding: .5rem .65rem; border: 1.5px solid #c9cdda; border-radius: 6px; font-family: inherit; font-size: .84rem; }
+        .btn-approve { padding: .5rem 1.1rem; border: none; border-radius: 18px; background: #157347; color: #fff; font-weight: 700; font-size: .82rem; cursor: pointer; }
+        .btn-approve:hover { background: #0f5132; }
+        .btn-reject { padding: .5rem 1.1rem; border: 1px solid #dc3545; border-radius: 18px; background: #fff; color: #dc3545; font-weight: 700; font-size: .82rem; cursor: pointer; }
+        .btn-reject:hover { background: #dc3545; color: #fff; }
 
         /* ── Lecturer card ── */
         .lec-card {
@@ -305,6 +419,60 @@ $highlightLec = $_GET['lec'] ?? null;
 
     <?php if ($msgText): ?>
         <div class="alert alert-<?= $msgType ?>"><?= htmlspecialchars($msgText) ?></div>
+    <?php endif; ?>
+
+    <!-- ── Pending mark corrections (lecturer → admin review) ── -->
+    <?php if (!empty($pendingCorrections)): ?>
+    <div class="corr-section">
+        <div class="section-heading">Pending Mark Corrections (<?= count($pendingCorrections) ?>)</div>
+        <?php foreach ($pendingCorrections as $c): ?>
+        <div class="corr-card">
+            <div class="corr-top">
+                <div>
+                    <div class="corr-mod"><?= htmlspecialchars($c["module_name"]) ?> (<?= htmlspecialchars($c["module_code"]) ?>)</div>
+                    <div class="corr-meta">
+                        <?= htmlspecialchars($c["student_name"]) ?> (<?= htmlspecialchars($c["student_ID"]) ?>)
+                        · Proposed by <?= htmlspecialchars($c["lecturer_name"] ?? "lecturer") ?>
+                        <?php if (!empty($c["category"])): ?> · <?= htmlspecialchars($c["category"]) ?><?php endif; ?>
+                        · <?= htmlspecialchars(date('d M Y, H:i', strtotime($c["created_at"]))) ?>
+                    </div>
+                </div>
+                <div class="corr-change">
+                    <?php if (!empty($c["category"]) && $c["new_component"] !== null): ?>
+                        <span class="old"><?= htmlspecialchars($c["category"]) ?> <?= (int)$c["old_component"] ?></span>
+                        &rarr;
+                        <span class="new"><?= (int)$c["new_component"] ?></span>
+                        <span style="margin-left:.35rem; color:#475467; font-weight:600;">&rarr; total <?= (int)$c["new_total"] ?>% (<?= htmlspecialchars($c["new_letter_grade"]) ?>)</span>
+                    <?php else: ?>
+                        <span class="old"><?= (int)$c["old_total"] ?>%</span>
+                        &rarr;
+                        <span class="new"><?= (int)$c["new_total"] ?>% (<?= htmlspecialchars($c["new_letter_grade"]) ?>)</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <?php if (!empty($c["message"])): ?>
+            <div class="corr-msg"><span class="lab">Student's report</span><?= nl2br(htmlspecialchars($c["message"])) ?></div>
+            <?php endif; ?>
+            <?php if (!empty($c["lecturer_note"])): ?>
+            <div class="corr-msg"><span class="lab">Lecturer's note</span><?= nl2br(htmlspecialchars($c["lecturer_note"])) ?></div>
+            <?php endif; ?>
+
+            <form method="post" action="AdminDashboard.php" class="corr-actions">
+                <input type="hidden" name="correction_id" value="<?= (int)$c["correction_ID"] ?>">
+                <input type="text" name="admin_note" class="admin-note" placeholder="Note (optional)">
+                <button type="submit" name="action" value="approve_correction" class="btn-approve"
+                        onclick="return confirm('Apply this mark change to the student\'s record? Their GPA/CGPA will be recalculated.');">
+                    Approve &amp; update mark
+                </button>
+                <button type="submit" name="action" value="reject_correction" class="btn-reject"
+                        onclick="return confirm('Reject this proposed mark change? The student\'s mark stays as-is.');">
+                    Reject
+                </button>
+            </form>
+        </div>
+        <?php endforeach; ?>
+    </div>
     <?php endif; ?>
 
     <!-- ── Summary stats ── -->

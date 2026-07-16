@@ -40,29 +40,109 @@ if (!$lecturer) {
 $allowedStatuses = ["Submitted", "Reviewing", "Resolved", "Rejected"];
 $updateMessage = null;
 
+// ─── Grade scale (to derive letter/GP for a proposed corrected mark) ──────────
+$grades = $pdo->query("SELECT min_mark, max_mark, letter_grade, grade_point FROM grade_system")->fetchAll();
+function gradeFromScore(int $score, array $grades): array {
+    foreach ($grades as $g) {
+        if ($score >= (int)$g["min_mark"] && $score <= (int)$g["max_mark"]) {
+            return ["letter_grade" => $g["letter_grade"], "grade_point" => $g["grade_point"]];
+        }
+    }
+    return ["letter_grade" => "0", "grade_point" => "0.00"];
+}
+
 // ─── Handle a status update submission ────────────────────────────────────────
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["report_ID"])) {
-    $reportID = (int)$_POST["report_ID"];
+    $reportID  = (int)$_POST["report_ID"];
     $newStatus = $_POST["status"] ?? "";
-    $note = trim($_POST["lecturer_note"] ?? "");
+    $note      = trim($_POST["lecturer_note"] ?? "");
+    $newMarkRaw = trim($_POST["new_mark"] ?? "");
 
     if (!in_array($newStatus, $allowedStatuses, true)) {
         $updateMessage = ["type" => "error", "text" => "Invalid status selected."];
     } else {
         // Only allow updating reports that actually belong to this lecturer's modules
-        $stmtOwns = $pdo->prepare("SELECT report_ID FROM module_report_tb WHERE report_ID = ? AND lecturer_ID = ?");
+        $stmtOwns = $pdo->prepare("
+            SELECT report_ID, student_ID, module_code, category
+            FROM   module_report_tb
+            WHERE  report_ID = ? AND lecturer_ID = ?
+        ");
         $stmtOwns->execute([$reportID, $lecturerID]);
+        $ownRow = $stmtOwns->fetch();
 
-        if (!$stmtOwns->fetch()) {
+        if (!$ownRow) {
             $updateMessage = ["type" => "error", "text" => "You can only update reports assigned to your modules."];
         } else {
-            $stmtUpdate = $pdo->prepare("
-                UPDATE module_report_tb
-                SET status = ?, lecturer_note = ?
+            // 1) Update the report's status + note (always)
+            $pdo->prepare("
+                UPDATE module_report_tb SET status = ?, lecturer_note = ?
                 WHERE report_ID = ? AND lecturer_ID = ?
-            ");
-            $stmtUpdate->execute([$newStatus, $note !== '' ? $note : null, $reportID, $lecturerID]);
-            $updateMessage = ["type" => "success", "text" => "Report #{$reportID} updated to \"{$newStatus}\"."];
+            ")->execute([$newStatus, $note !== '' ? $note : null, $reportID, $lecturerID]);
+
+            $msgText = "Report #{$reportID} updated to \"{$newStatus}\".";
+
+            // 2) Optionally propose a corrected COMPONENT mark for the reported
+            //    category (CAT1 / CAT2 / Exam) → goes to admin for approval.
+            //    The final total is recomputed as CAT1 + CAT2 + Exam.
+            if ($newMarkRaw !== "" && is_numeric($newMarkRaw)) {
+                $category  = $ownRow["category"];
+                $catColumn = ['CAT1' => 'cat1_mk', 'CAT2' => 'cat2_mk', 'Exam' => 'exam_mk'];
+                $catMax    = ['CAT1' => 20,        'CAT2' => 20,        'Exam' => 60];
+
+                if (!isset($catColumn[$category])) {
+                    $updateMessage = ["type" => "error", "text" => "This report's category can't be mapped to a mark component."];
+                } else {
+                    $newComp = (int)$newMarkRaw;
+                    $maxC    = $catMax[$category];
+                    if ($newComp < 0 || $newComp > $maxC) {
+                        $updateMessage = ["type" => "error", "text" => "The corrected {$category} mark must be between 0 and {$maxC}."];
+                    } else {
+                        // Current recorded breakdown for this student + module
+                        $rs = $pdo->prepare("SELECT cat1_mk, cat2_mk, exam_mk, final_total FROM results_tb WHERE student_ID = ? AND module_code = ? LIMIT 1");
+                        $rs->execute([$ownRow["student_ID"], $ownRow["module_code"]]);
+                        $curRow = $rs->fetch();
+
+                        if (!$curRow) {
+                            $updateMessage = ["type" => "error", "text" => "No existing result was found for that module, so there's nothing to correct."];
+                        } else {
+                            $col     = $catColumn[$category];
+                            $oldComp = (int)$curRow[$col];
+
+                            // Recompute total = CAT1 + CAT2 + Exam with the corrected component swapped in
+                            $c1 = (int)$curRow["cat1_mk"]; $c2 = (int)$curRow["cat2_mk"]; $ex = (int)$curRow["exam_mk"];
+                            if     ($category === 'CAT1') { $c1 = $newComp; }
+                            elseif ($category === 'CAT2') { $c2 = $newComp; }
+                            else                          { $ex = $newComp; }
+                            $newTotal = max(0, min(100, $c1 + $c2 + $ex));
+                            $oldTotal = (int)$curRow["final_total"];
+
+                            if ($oldComp === $newComp) {
+                                $updateMessage = ["type" => "success", "text" => $msgText . " ({$category} mark left unchanged.)"];
+                            } else {
+                                $g = gradeFromScore($newTotal, $grades);
+                                // Replace any earlier pending correction for this report
+                                $pdo->prepare("DELETE FROM mark_correction_tb WHERE report_ID = ? AND status = 'Pending'")->execute([$reportID]);
+                                $pdo->prepare("
+                                    INSERT INTO mark_correction_tb
+                                        (report_ID, student_ID, module_code, lecturer_ID, category,
+                                         old_component, new_component, old_total, new_total,
+                                         new_grade_point, new_letter_grade, status, lecturer_note, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, NOW())
+                                ")->execute([
+                                    $reportID, $ownRow["student_ID"], $ownRow["module_code"], $lecturerID, $category,
+                                    $oldComp, $newComp, $oldTotal, $newTotal,
+                                    $g["grade_point"], $g["letter_grade"],
+                                    $note !== '' ? $note : null,
+                                ]);
+                                $updateMessage = ["type" => "success", "text" =>
+                                    $msgText . " Proposed {$category} change {$oldComp} → {$newComp} (total {$oldTotal}% → {$newTotal}%, {$g['letter_grade']}) sent to the admin for approval."];
+                            }
+                        }
+                    }
+                }
+            } else {
+                $updateMessage = ["type" => "success", "text" => $msgText];
+            }
         }
     }
 }
@@ -71,10 +151,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["report_ID"])) {
 $stmtReports = $pdo->prepare("
     SELECT mr.report_ID, mr.module_code, m.module_name, mr.category, mr.message,
            mr.status, mr.lecturer_note, mr.created_at, mr.updated_at,
-           s.student_name, s.student_ID
+           s.student_name, s.student_ID,
+           res.final_total AS current_total, res.letter_grade AS current_grade,
+           res.cat1_mk AS c1, res.cat2_mk AS c2, res.exam_mk AS ex
     FROM   module_report_tb mr
-    JOIN   module_tb m ON mr.module_code = m.module_code
-    JOIN   student_tb s ON mr.student_ID = s.student_ID
+    JOIN   module_tb  m   ON mr.module_code = m.module_code
+    JOIN   student_tb s   ON mr.student_ID  = s.student_ID
+    LEFT JOIN results_tb res ON res.student_ID = mr.student_ID AND res.module_code = mr.module_code
     WHERE  mr.lecturer_ID = ?
     ORDER  BY
         CASE mr.status WHEN 'Submitted' THEN 0 WHEN 'Reviewing' THEN 1 ELSE 2 END,
@@ -82,6 +165,18 @@ $stmtReports = $pdo->prepare("
 ");
 $stmtReports->execute([$lecturerID]);
 $reports = $stmtReports->fetchAll();
+
+// ─── Latest mark-correction per report (to show its approval state) ──────────
+$corrByReport = [];
+$reportIDs = array_column($reports, 'report_ID');
+if (!empty($reportIDs)) {
+    $in = implode(',', array_fill(0, count($reportIDs), '?'));
+    $cs = $pdo->prepare("SELECT * FROM mark_correction_tb WHERE report_ID IN ($in) ORDER BY created_at DESC");
+    $cs->execute($reportIDs);
+    foreach ($cs->fetchAll() as $c) {
+        if (!isset($corrByReport[$c['report_ID']])) { $corrByReport[$c['report_ID']] = $c; } // keep latest
+    }
+}
 
 function statusClass(string $status): string {
     return match($status) {
@@ -172,6 +267,18 @@ function statusClass(string $status): string {
             color: #fff; font-weight: 600; font-size: .82rem; cursor: pointer; align-self: flex-end;
         }
         .btn-update:hover { background: #121e38; }
+
+        .update-form input.mark-input {
+            padding: .5rem .65rem; border: 1.5px solid #c9cdda; border-radius: 6px;
+            font-family: 'Inter', sans-serif; font-size: .85rem; width: 6rem;
+        }
+
+        .mark-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .9rem; font-size: .82rem; color: #444; }
+        .mark-current strong { color: #16213f; }
+        .corr-badge { font-size: .74rem; font-weight: 700; padding: .2rem .6rem; border-radius: 12px; }
+        .corr-pending  { background: #fef3c7; color: #92400e; }
+        .corr-approved { background: #d1fae5; color: #065f46; }
+        .corr-rejected { background: #fde2e2; color: #991b1b; }
     </style>
 </head>
 <body>
@@ -205,7 +312,14 @@ function statusClass(string $status): string {
     <?php if (empty($reports)): ?>
         <p class="empty">No module issue reports have been submitted for your modules yet.</p>
     <?php else: ?>
-        <?php foreach ($reports as $r): ?>
+        <?php foreach ($reports as $r):
+            $corr = $corrByReport[$r['report_ID']] ?? null;
+            $catColMap = ['CAT1' => 'c1', 'CAT2' => 'c2', 'Exam' => 'ex'];
+            $catMaxMap = ['CAT1' => 20, 'CAT2' => 20, 'Exam' => 60];
+            $reportCat = $r['category'];
+            $curComp   = (isset($catColMap[$reportCat]) && $r['current_total'] !== null) ? (int)$r[$catColMap[$reportCat]] : null;
+            $compMax   = $catMaxMap[$reportCat] ?? 100;
+        ?>
         <div class="report-card">
             <div class="report-head">
                 <div>
@@ -224,6 +338,26 @@ function statusClass(string $status): string {
                 <?= nl2br(htmlspecialchars($r["message"])) ?>
             </div>
 
+            <div class="mark-row">
+                <span class="mark-current">Current:
+                    <?php if ($r["current_total"] !== null): ?>
+                        <strong>CAT1 <?= (int)$r['c1'] ?> &middot; CAT2 <?= (int)$r['c2'] ?> &middot; Exam <?= (int)$r['ex'] ?>
+                        &middot; Total <?= (int)$r["current_total"] ?>% (<?= htmlspecialchars($r["current_grade"]) ?>)</strong>
+                    <?php else: ?><strong>—</strong><?php endif; ?>
+                </span>
+                <?php if ($corr): ?>
+                    <span class="corr-badge corr-<?= strtolower($corr["status"]) ?>">
+                        <?php if (!empty($corr["category"]) && $corr["new_component"] !== null): ?>
+                            <?= htmlspecialchars($corr["category"]) ?> <?= (int)$corr["old_component"] ?> &rarr; <?= (int)$corr["new_component"] ?>
+                            (total <?= (int)$corr["old_total"] ?>% &rarr; <?= (int)$corr["new_total"] ?>%, <?= htmlspecialchars($corr["new_letter_grade"]) ?>)
+                        <?php else: ?>
+                            <?= (int)$corr["old_total"] ?>% &rarr; <?= (int)$corr["new_total"] ?>% (<?= htmlspecialchars($corr["new_letter_grade"]) ?>)
+                        <?php endif; ?>
+                        &middot; <?= htmlspecialchars($corr["status"]) ?><?= $corr["status"] === "Pending" ? " — awaiting admin" : "" ?>
+                    </span>
+                <?php endif; ?>
+            </div>
+
             <form class="update-form" method="POST" action="LecturerReportsStatus.php">
                 <input type="hidden" name="report_ID" value="<?= (int)$r["report_ID"] ?>">
 
@@ -234,6 +368,14 @@ function statusClass(string $status): string {
                         <option value="<?= $s ?>" <?= $r["status"] === $s ? 'selected' : '' ?>><?= $s ?></option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+
+                <div class="field">
+                    <label for="mark_<?= $r['report_ID'] ?>">Corrected <?= htmlspecialchars($reportCat) ?> mark (max <?= (int)$compMax ?>)</label>
+                    <input type="number" name="new_mark" id="mark_<?= $r['report_ID'] ?>" min="0" max="<?= (int)$compMax ?>"
+                           class="mark-input"
+                           placeholder="<?= $curComp !== null ? (int)$curComp : '—' ?>"
+                           value="<?= ($corr && $corr["status"] === "Pending" && $corr["new_component"] !== null) ? (int)$corr["new_component"] : '' ?>">
                 </div>
 
                 <div class="field note-field">
