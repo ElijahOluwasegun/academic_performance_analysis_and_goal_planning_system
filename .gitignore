@@ -1,0 +1,13 @@
+# ── Local secrets — NEVER commit real API keys or passwords ──────────────────
+config.local.php
+
+# ── OS / editor cruft ────────────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# ── Logs / temp ──────────────────────────────────────────────────────────────
+*.log

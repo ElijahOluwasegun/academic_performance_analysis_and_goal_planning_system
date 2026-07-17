@@ -3,9 +3,17 @@ session_start();
 header('Content-Type: application/json');
 
 // ─── Anthropic API key ────────────────────────────────────────────────────────
-// Paste your key here on ONE line, no line breaks. Leave blank to disable the
-// "Generate with Claude" button (the rule-based insight on the page still shows).
-define('ANTHROPIC_API_KEY', '');
+// The key lives in config.local.php, which is git-ignored and never pushed to
+// GitHub. Copy config.local.example.php to config.local.php and paste your key
+// there. If the file is missing or the key is blank, the "Generate with Claude"
+// button degrades gracefully (the rule-based insight on the page still shows).
+$localConfig = __DIR__ . '/config.local.php';
+if (is_file($localConfig)) {
+    require $localConfig;
+}
+if (!defined('ANTHROPIC_API_KEY')) {
+    define('ANTHROPIC_API_KEY', '');
+}
 
 function respond(array $p, int $code = 200): void { http_response_code($code); echo json_encode($p); exit(); }
 
