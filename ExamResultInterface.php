@@ -586,6 +586,11 @@ $canPrintTranscript = $isFinalYear && $allModulesMarked;
             <?php endif; ?>
         </div>
 
+        <p class="lock-note" style="margin:0;">
+            &#9888; Printed statements and transcripts are <strong>test documents</strong> produced by this
+            project and are <strong>not official</strong> Cavendish University records.
+        </p>
+
         <?php if ($isFinalYear && !$allModulesMarked): ?>
             <div class="missing-note">
                 <strong>&#9888; Your transcript is locked.</strong>

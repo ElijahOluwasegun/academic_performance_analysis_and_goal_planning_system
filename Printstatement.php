@@ -97,24 +97,44 @@ $dateIssued = (new DateTime())->format('j F Y'); // e.g. 14 July 2026
             color: #000;
             background: #fff;
             padding: 1.5rem 2rem;
+            /* Keep gray fills when printing (browsers strip backgrounds otherwise) */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
 
-        .sheet { max-width: 850px; margin: 0 auto; }
+        .sheet { max-width: 850px; margin: 0 auto; position: relative; }
 
-        /* ── Letterhead ── */
+        /* Watermark — position:fixed repeats it on every printed page */
+        .watermark {
+            position: fixed; top: 46%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-32deg);
+            font-size: 3.3rem; font-weight: 800; letter-spacing: .05em;
+            color: rgba(22, 33, 63, .07); white-space: nowrap;
+            z-index: 9999; pointer-events: none;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+
+        /* ── Letterhead: crest pinned left, heading block centred on the page ── */
         .letterhead {
-            display: flex;
-            gap: 1.6em;
-            justify-content: center;
-            align-items: center;
+            position: relative;
             text-align: center;
+            min-height: 6em;
             margin-bottom: 1.1rem;
+            padding: 0 1rem;
         }
-        .letterhead img { width: 5.5em; }
-        .letterhead h1 { font-size: 15px; font-weight: 700; }
+        .letterhead img { position: absolute; left: 0; top: .2em; width: 5.5em; }
+        .letterhead h1 {
+            font-size: 15px;
+            font-weight: 700;
+            display: inline-block;
+            padding: 0 1.4em 2px;
+            border-bottom: 1.5px solid #000;
+            margin-bottom: .35rem;
+        }
         .letterhead p  { font-size: 11px; font-weight: 700; line-height: 1.5; }
         .letterhead .doc-title { font-size: 12px; font-weight: 700; margin-top: .5rem; }
         .letterhead .doc-sub   { font-size: 10px; font-weight: 400; letter-spacing: .08em; }
+        .letterhead .specimen  { margin-top: .35rem; font-size: 10px; font-weight: 700; color: #b42318; letter-spacing: .03em; }
 
         /* ── Bio block (label / value) ── */
         .bio {
@@ -137,38 +157,29 @@ $dateIssued = (new DateTime())->format('j F Y'); // e.g. 14 July 2026
             background: #d9d9d9;
             font-weight: 700;
             text-align: center;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
         table.results-table thead th.left { text-align: left; }
         table.results-table td.center { text-align: center; }
 
         /* Term separator row spanning the whole width */
         tr.term-row td {
-            background: #bfbfbf;
+            background: #d0d0d0;
             font-weight: 700;
             text-align: center;
             font-style: italic;
             font-size: 11px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
 
-        /* ── Signatures ── */
-        .sign-block {
-            margin-top: 3rem;
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            font-weight: 700;
-        }
-        .sign-col { width: 45%; }
-        .sign-dots { letter-spacing: 1px; }
-        .sign-role { text-align: center; margin-top: .35rem; }
-
-        .doc-footer {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 1.2rem;
-            font-size: 9.5px;
-            color: #333;
-        }
+        /* ── Test-document warning footer (replaces the signature block) ── */
+        .warn-footer { margin-top: 2.6rem; text-align: center; }
+        .warn-dots   { letter-spacing: 2px; font-size: 13px; }
+        .warn-office { font-weight: 700; font-size: 11px; margin-top: .15rem; }
+        .warn-msg    { font-weight: 700; font-size: 11px; margin-top: .7rem; color: #b42318; line-height: 1.5; max-width: 44rem; margin: .7rem auto 0; }
+        .warn-printed{ font-size: 9.5px; color: #333; margin-top: .55rem; }
 
         /* ── Print controls (hidden when actually printing) ── */
         .print-controls { text-align: center; margin-bottom: 1.2rem; }
@@ -181,10 +192,12 @@ $dateIssued = (new DateTime())->format('j F Y'); // e.g. 14 July 2026
 
         @media print {
             .print-controls { display: none !important; }
-            body { padding: 0; }
+            body { padding: 12mm 14mm; }
             .sheet { max-width: 100%; }
         }
-        @page { size: A4; margin: 14mm; }
+        /* margin:0 removes the browser's default header/footer (date, title, URL,
+           page number); the body padding above restores the printable margin. */
+        @page { size: A4; margin: 0; }
     </style>
 </head>
 <body>
@@ -194,6 +207,8 @@ $dateIssued = (new DateTime())->format('j F Y'); // e.g. 14 July 2026
     </div>
 
     <div class="sheet">
+
+        <div class="watermark">NOT AN OFFICIAL PROVISIONAL STATEMENT</div>
 
         <!-- ── Letterhead ── -->
         <div class="letterhead">
@@ -206,6 +221,7 @@ $dateIssued = (new DateTime())->format('j F Y'); // e.g. 14 July 2026
                 <p><?= htmlspecialchars($student["program_name"]) ?></p>
                 <p class="doc-title">OFFICIAL EXAMINATION RESULTS STATEMENT</p>
                 <p class="doc-sub">PROGRESSION</p>
+                <p class="specimen">SPECIMEN — TEST DOCUMENT, NOT AN OFFICIAL RESULTS STATEMENT</p>
             </div>
         </div>
 
@@ -255,20 +271,17 @@ $dateIssued = (new DateTime())->format('j F Y'); // e.g. 14 July 2026
 
         <?php endif; ?>
 
-        <!-- ── Signatures ── -->
-        <div class="sign-block">
-            <div class="sign-col">
-                <div><span>SIGNED:</span> <span class="sign-dots">..................................</span></div>
-                <div class="sign-role">Dean of <?= htmlspecialchars($student["program_faculty"]) ?></div>
+        <!-- ── Test-document warning footer ── -->
+        <div class="warn-footer">
+            <div class="warn-dots">......................................................</div>
+            <div class="warn-office">For Examinations Office</div>
+            <div class="warn-msg">
+                WARNING: This document is generated by the APAAGPS student project for
+                demonstration purposes only. It reflects provisional results, should NOT be
+                substituted for a Transcript, and is <u>NOT</u> an official Cavendish University
+                Uganda results statement.
             </div>
-            <div class="sign-col">
-                <div><span>SIGNED:</span> <span class="sign-dots">..................................</span></div>
-                <div class="sign-role">Registrar</div>
-            </div>
-        </div>
-
-        <div class="doc-footer">
-            <span>This reflects provisional results and should NOT be substituted for a Transcript.</span>
+            <div class="warn-printed">Printed on: <?= htmlspecialchars($dateIssued) ?></div>
         </div>
 
     </div>

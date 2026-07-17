@@ -141,50 +141,81 @@ $today = (new DateTime())->format('d/m/Y H:i');
     <title>Academic Transcript – <?= htmlspecialchars($student["student_ID"]) ?></title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; padding: 1.5rem 2rem; }
-        .sheet { max-width: 850px; margin: 0 auto; }
+        body {
+            font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000;
+            background: #fff; padding: 1.5rem 2rem;
+            /* Keep every fill (navy bars, gray headers) when printing */
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+        .sheet { max-width: 850px; margin: 0 auto; position: relative; }
 
-        .letterhead { display: flex; gap: 2em; justify-content: center; align-items: center; text-align: center; margin-bottom: 1rem; }
-        img { width: 6em; }
-        .letterhead h1 { font-size: 15px; font-weight: 700; margin-bottom: .2rem; }
-        .letterhead p { font-size: 10px; line-height: 1.4; }
+        /* Watermark — position:fixed repeats it on every printed page */
+        .watermark {
+            position: fixed; top: 46%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-32deg);
+            font-size: 4.4rem; font-weight: 800; letter-spacing: .06em;
+            color: rgba(22, 33, 63, .07); white-space: nowrap;
+            z-index: 9999; pointer-events: none;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+
+        /* Letterhead: crest pinned left, heading block centred on the page */
+        .letterhead { position: relative; text-align: center; min-height: 6.4em; margin-bottom: 1rem; padding: 0 1rem; }
+        .letterhead img { position: absolute; left: 0; top: .2em; width: 6em; }
+        .letterhead h1 { font-size: 16px; font-weight: 700; margin-bottom: .25rem; }
+        .letterhead p { font-size: 10px; line-height: 1.45; }
         .letterhead .doc-title { font-size: 13px; font-weight: 700; margin-top: .5rem; letter-spacing: .05em; }
+        .letterhead .specimen { margin-top: .3rem; font-size: 10px; font-weight: 700; color: #b42318; letter-spacing: .03em; }
 
+        /* Bio block + passport-photo box */
         .bio-table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
         .bio-table td { border: 1px solid #000; padding: 4px 8px; font-size: 11px; vertical-align: top; }
-        .bio-table td.label { font-weight: 700; width: 14%; background: #fafafa; }
-        .bio-table td.value { width: 36%; }
+        .bio-table td.label { font-weight: 700; width: 13%; background: #ececec; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .bio-table td.value { width: 27%; }
+        .bio-table td.photo-box {
+            width: 120px; text-align: center; vertical-align: middle;
+            color: #9aa0ac; font-size: 9px; font-weight: 700; letter-spacing: .08em; line-height: 1.6;
+        }
 
+        /* Semester sections */
         .sem-section { margin-bottom: .85rem; }
-        .sem-title { background: #16213f; color: #fff; font-weight: 700; font-size: 11px; padding: 4px 8px; text-transform: uppercase; }
+        .sem-title { background: #16213f; color: #fff; font-weight: 700; font-size: 11px; padding: 5px 8px;
+            text-transform: uppercase; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
         table.results-table { width: 100%; border-collapse: collapse; }
         table.results-table th, table.results-table td { border: 1px solid #000; padding: 3px 6px; font-size: 10.5px; }
-        table.results-table th { background: #d9d9d9; font-weight: 700; text-align: left; }
+        table.results-table th { background: #d9d9d9; font-weight: 700; text-align: left;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         table.results-table td.num, table.results-table th.num { text-align: center; }
 
-        .gpa-footer-row td { font-weight: 700; background: #f0f0f0; text-align: right; }
-        .gpa-footer-row td.gpa-val, .gpa-footer-row td.cgpa-val { text-align: center; background: #fff; }
+        .spacer-row td { height: 14px; }
+        .gpa-footer-row td.gpa-lab { font-weight: 700; text-align: center; background: #d9d9d9;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .gpa-footer-row td.gpa-num { font-weight: 700; text-align: center; }
 
+        /* Award + medium of instruction */
         .award-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         .award-table td { border: 1px solid #000; padding: 5px 8px; font-size: 11px; }
-        .award-table td.label { font-weight: 700; width: 22%; background: #fafafa; }
+        .award-table td.label { font-weight: 700; width: 18%; background: #ececec; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .award-table td.award-val { font-weight: 700; }
+        .medium-note { text-align: center; font-weight: 700; font-style: italic; font-size: 11px;
+            border: 1px solid #000; border-top: none; padding: 5px; background: #d9d9d9;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-        .medium-note { text-align: center; font-weight: 700; font-style: italic; font-size: 11px; border: 1px solid #000; padding: 4px; margin-top: .4rem; background: #f0f0f0; }
-
-        .sign-block { margin-top: 2.2rem; display: flex; justify-content: space-between; font-size: 10.5px; }
-        .sign-col { text-align: center; width: 45%; }
-        .sign-line { display: inline-block; border-bottom: 1px solid #000; width: 100%; margin-bottom: .3rem; height: 1.6rem; }
-
-        .doc-footer { display: flex; justify-content: space-between; margin-top: 1rem; font-size: 9.5px; color: #333; }
+        /* Warning / test-document footer */
+        .warn-footer { margin-top: 2.4rem; text-align: center; }
+        .warn-dots { letter-spacing: 2px; font-size: 13px; }
+        .warn-office { font-weight: 700; font-size: 11px; margin-top: .15rem; }
+        .warn-msg { font-weight: 700; font-size: 11px; margin-top: .7rem; color: #b42318; line-height: 1.5; max-width: 44rem; margin-left: auto; margin-right: auto; }
+        .warn-printed { font-size: 9.5px; color: #333; margin-top: .55rem; }
 
         .print-controls { text-align: center; margin-bottom: 1.2rem; }
         .print-controls button { padding: .5rem 1.3rem; border-radius: 20px; border: 1px solid #888; background: #213769; color: #fff; font-weight: 600; font-size: .85rem; cursor: pointer; font-family: Arial, sans-serif; }
         .print-controls button:hover { background: #121e38; }
 
-        @media print { .print-controls { display: none !important; } body { padding: 0; } .sheet { max-width: 100%; } }
-        @page { size: A4; margin: 14mm; }
+        @media print { .print-controls { display: none !important; } body { padding: 12mm 14mm; } .sheet { max-width: 100%; } }
+        /* margin:0 removes the browser's default header/footer (date, title, URL, page #) */
+        @page { size: A4; margin: 0; }
     </style>
 </head>
 <body>
@@ -195,15 +226,16 @@ $today = (new DateTime())->format('d/m/Y H:i');
 
     <div class="sheet">
 
+        <div class="watermark">NOT AN OFFICIAL TRANSCRIPT</div>
+
         <div class="letterhead">
-            <div class="letterhead_image">
-                <img src="images/cu_logo.jpg" alt="Cavendish Logo">
-            </div>
+            <img src="images/cu_logo.jpg" alt="Cavendish Logo">
             <div class="letterhead_text">
                 <h1>Cavendish University Uganda</h1>
                 <p>P.O Box 33145, Kampala, Uganda; Tel/Fax: +256 414 531700</p>
                 <p>Email: info@cavendish.ac.ug; Web: www.cavendish.ac.ug</p>
-                <p class="doc-title">OFFICIAL ACADEMIC TRANSCRIPT</p>
+                <p class="doc-title">ACADEMIC TRANSCRIPT</p>
+                <p class="specimen">SPECIMEN — TEST DOCUMENT, NOT AN OFFICIAL TRANSCRIPT</p>
             </div>
         </div>
 
@@ -213,6 +245,7 @@ $today = (new DateTime())->format('d/m/Y H:i');
                 <td class="value"><?= htmlspecialchars($student["student_name"]) ?></td>
                 <td class="label">Gender</td>
                 <td class="value"><?= htmlspecialchars($student["gender"]) ?></td>
+                <td class="photo-box" rowspan="5">AFFIX<br>PASSPORT<br>PHOTO</td>
             </tr>
             <tr>
                 <td class="label">Student No.</td>
@@ -252,16 +285,20 @@ $today = (new DateTime())->format('d/m/Y H:i');
             <table class="results-table">
                 <thead>
                     <tr>
-                        <th style="width:12%">Module Code</th>
+                        <th style="width:11%">Module Code</th>
                         <th>Module Name</th>
                         <th class="num" style="width:8%">Score</th>
                         <th class="num" style="width:6%">CU</th>
                         <th class="num" style="width:6%">GP</th>
                         <th class="num" style="width:8%">Grade</th>
+                        <th class="num" style="width:9%">Comment</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($rows as $r): ?>
+                    <?php foreach ($rows as $r):
+                        // Comment: "NP" (Normal Progress) on a clean pass, else the status
+                        $comment = (strcasecmp($r["status_retake_pass"], "Pass") === 0) ? "NP" : $r["status_retake_pass"];
+                    ?>
                     <tr>
                         <td><?= htmlspecialchars($r["module_code"]) ?></td>
                         <td><?= htmlspecialchars($r["module_name"]) ?></td>
@@ -269,18 +306,22 @@ $today = (new DateTime())->format('d/m/Y H:i');
                         <td class="num"><?= htmlspecialchars($r["credit_unit"]) ?></td>
                         <td class="num"><?= htmlspecialchars($r["grade_point"]) ?></td>
                         <td class="num"><?= htmlspecialchars($r["letter_grade"]) ?></td>
+                        <td class="num"><?= htmlspecialchars($comment) ?></td>
                     </tr>
                     <?php endforeach; ?>
 
+                    <tr class="spacer-row"><td colspan="7">&nbsp;</td></tr>
                     <tr class="gpa-footer-row">
                         <?php if ($cgpa !== null): ?>
-                            <td colspan="2">GPA</td>
-                            <td class="gpa-val"><?= number_format($gpa ?? 0, 2) ?></td>
-                            <td colspan="1">CGPA</td>
-                            <td class="cgpa-val" colspan="2"><?= number_format($cgpa, 2) ?></td>
+                            <td colspan="3"></td>
+                            <td class="gpa-lab">GPA</td>
+                            <td class="gpa-num"><?= number_format($gpa ?? 0, 2) ?></td>
+                            <td class="gpa-lab">CGPA</td>
+                            <td class="gpa-num"><?= number_format($cgpa, 2) ?></td>
                         <?php else: ?>
-                            <td colspan="4">GPA</td>
-                            <td class="gpa-val" colspan="2"><?= number_format($gpa ?? 0, 2) ?></td>
+                            <td colspan="5"></td>
+                            <td class="gpa-lab">GPA</td>
+                            <td class="gpa-num"><?= number_format($gpa ?? 0, 2) ?></td>
                         <?php endif; ?>
                     </tr>
                 </tbody>
@@ -303,21 +344,16 @@ $today = (new DateTime())->format('d/m/Y H:i');
         </table>
         <div class="medium-note">The Medium of Instruction is English</div>
 
-        <!-- ── Signatures ── -->
-        <div class="sign-block">
-            <div class="sign-col">
-                <div class="sign-line"></div>
-                <div>Dean, <?= htmlspecialchars($student["program_faculty"]) ?></div>
+        <!-- ── Test-document warning footer ── -->
+        <div class="warn-footer">
+            <div class="warn-dots">......................................................</div>
+            <div class="warn-office">For Examinations Office</div>
+            <div class="warn-msg">
+                WARNING: This document is generated by the APAAGPS student project for
+                demonstration purposes only. It reflects provisional results and is
+                <u>NOT</u> an official Cavendish University Uganda transcript.
             </div>
-            <div class="sign-col">
-                <div class="sign-line"></div>
-                <div>Academic Registrar</div>
-            </div>
-        </div>
-
-        <div class="doc-footer">
-            <span>This is an official academic transcript issued by Cavendish University Uganda.</span>
-            <span>Printed on: <?= $today ?></span>
+            <div class="warn-printed">Printed on: <?= $today ?></div>
         </div>
 
     </div>
