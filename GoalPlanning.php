@@ -2,33 +2,17 @@
 session_start();
 
 // ════════════════════════════════════════════════════════════════════════
-// CONFIG
+// CONFIG + AUTH
 // ════════════════════════════════════════════════════════════════════════
+$db_host = "127.0.0.1"; $db_port = "3306"; $db_name = "apaagps_db";
+$db_user = "root"; $db_pass = "";
 
-// ─── Database ──────────────────────────────────────────────────────────────
-$db_host = "127.0.0.1";
-$db_port = "3306";
-$db_name = "apaagps_db";
-$db_user = "root";   // ← change if needed
-$db_pass = "";       // ← change if needed
-
-// ─── Anthropic API key ───────────────────────────────────────────────────────
-// This page relies entirely on the API — there is no rule-based fallback, so if
-// the key is missing or the call fails, the error is shown on screen.
-// Get one at https://console.anthropic.com/ — never commit real keys to source control.
-define('ANTHROPIC_API_KEY', ''); // ← paste your key here when you have one
-
-// ════════════════════════════════════════════════════════════════════════
-// AUTH — this page is reached via the navbar, so it relies on the session
-// set by ExamResultInterface.php at login, not a fresh POST.
-// ════════════════════════════════════════════════════════════════════════
 if (empty($_SESSION["student_ID"])) {
     header("Location: index.php?error=session_expired");
     exit();
 }
 $studentID = $_SESSION["student_ID"];
 
-// ─── PDO connection ───────────────────────────────────────────────────────────
 try {
     $dsn = "mysql:host={$db_host};port={$db_port};dbname={$db_name};charset=utf8mb4";
     $pdo = new PDO($dsn, $db_user, $db_pass, [
@@ -40,28 +24,16 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
-// ─── Student + program info ───────────────────────────────────────────────────
 $stmtS = $pdo->prepare("
-    SELECT s.student_ID, s.student_name, s.program_code,
-           p.program_name, p.program_faculty
-    FROM   student_tb s
-    JOIN   program_tb p ON s.program_code = p.program_code
-    WHERE  s.student_ID = ?
-    LIMIT  1
+    SELECT s.student_ID, s.student_name, s.program_code, p.program_name, p.program_faculty
+    FROM   student_tb s JOIN program_tb p ON s.program_code = p.program_code
+    WHERE  s.student_ID = ? LIMIT 1
 ");
 $stmtS->execute([$studentID]);
 $student = $stmtS->fetch();
+if (!$student) { header("Location: index.php?error=invalid_session"); exit(); }
 
-if (!$student) {
-    header("Location: index.php?error=invalid_session");
-    exit();
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// FIXED CAREER INTEREST LIST
-// (Mirrors career_paths_tb in the optional migration — kept in sync manually
-// since the 'fallback' and 'api' sources don't require the DB table to exist.)
-// ════════════════════════════════════════════════════════════════════════
+// ─── Career interests ─────────────────────────────────────────────────────────
 $careerOptions = [
     "Software Development"        => "Building applications, web/mobile systems, and backend services.",
     "Data Science & Analytics"    => "Extracting insight from data using statistics, ML, and visualization.",
@@ -70,532 +42,220 @@ $careerOptions = [
     "Business & IT Consulting"    => "Bridging business needs with technical solutions; IT governance and strategy.",
     "UI/UX & Product Design"      => "Designing usable, accessible digital products and interfaces.",
 ];
-
-// ─── Read selected interests from form submission (if any) ───────────────────
 $selectedCareers = $_POST["careers"] ?? [];
-$selectedCareers = array_intersect($selectedCareers, array_keys($careerOptions)); // sanitize
-$hasSubmitted     = $_SERVER["REQUEST_METHOD"] === "POST" && !empty($selectedCareers);
+$selectedCareers = array_values(array_intersect($selectedCareers, array_keys($careerOptions)));
 
-// ════════════════════════════════════════════════════════════════════════
-// FETCH PAST RESULTS (for performance analysis)
-// ════════════════════════════════════════════════════════════════════════
+// ─── Past results ─────────────────────────────────────────────────────────────
 $stmtR = $pdo->prepare("
     SELECT r.year_no, r.sem_no, r.module_code, m.module_name, m.credit_unit,
-           r.cat1_mk, r.cat2_mk, r.exam_mk, r.final_total,
-           r.letter_grade, r.grade_point, r.status_retake_pass
-    FROM   results_tb r
-    JOIN   module_tb  m ON r.module_code = m.module_code
-    WHERE  r.student_ID = ?
-    ORDER  BY r.year_no ASC, r.sem_no ASC
+           r.final_total, r.letter_grade, r.grade_point, r.status_retake_pass
+    FROM   results_tb r JOIN module_tb m ON r.module_code = m.module_code
+    WHERE  r.student_ID = ? ORDER BY r.year_no ASC, r.sem_no ASC
 ");
 $stmtR->execute([$studentID]);
 $pastResults = $stmtR->fetchAll();
 
-$hasResults = !empty($pastResults);
-
-// ─── Determine the student's latest completed (year, sem) ────────────────────
-$latestYear = 0;
-$latestSem  = 0; // global sequential sem_no matching module_tb (Y1S1=1, Y1S2=2, Y2S1=3 …)
-if ($hasResults) {
-    foreach ($pastResults as $r) {
-        if ((int)$r["year_no"] > $latestYear ||
-            ((int)$r["year_no"] === $latestYear && (int)$r["sem_no"] > $latestSem)) {
-            $latestYear = (int)$r["year_no"];
-            $latestSem  = (int)$r["sem_no"];
-        }
-    }
-}
-
-// ─── Compute next semester ────────────────────────────────────────────────────
-// module_tb uses a global sem_no (1-6 across all three years), not a per-year
-// 1/2. Simply incrementing gives the correct row to query.
+// ─── Latest completed → next semester ─────────────────────────────────────────
+$latestSem = 0;
+foreach ($pastResults as $r) { $latestSem = max($latestSem, (int)$r["sem_no"]); }
 $nextSemGlobal = $latestSem + 1;
 $nextYear      = max(1, (int)ceil($nextSemGlobal / 2));
-$nextSem       = (($nextSemGlobal - 1) % 2) + 1; // 1 or 2 within the year (display only)
+$nextSem       = (($nextSemGlobal - 1) % 2) + 1;
 
-// Per-year label for "Based on results through Year X, Sem Y" display
-$latestSemDisplay = $latestSem > 0 ? (($latestSem - 1) % 2) + 1 : 1;
-
-// ════════════════════════════════════════════════════════════════════════
-// FETCH NEXT SEMESTER'S MODULES (from module_tb, scoped to the student's program)
-// ════════════════════════════════════════════════════════════════════════
 $stmtNext = $pdo->prepare("
     SELECT module_code, module_name, year_no, sem_no, credit_unit
-    FROM   module_tb
-    WHERE  program_code = ?
-      AND  year_no = ?
-      AND  sem_no  = ?
+    FROM   module_tb WHERE program_code = ? AND year_no = ? AND sem_no = ?
     ORDER  BY module_code ASC
 ");
 $stmtNext->execute([$student["program_code"], $nextYear, $nextSemGlobal]);
 $nextModules = $stmtNext->fetchAll();
 
 // ════════════════════════════════════════════════════════════════════════
-// PERFORMANCE ANALYSIS — strongest/weakest areas by grade point
-// ════════════════════════════════════════════════════════════════════════
-$performanceSummary = [
-    "overall_avg_gp" => null,
-    "strongest"      => [], // top modules by grade_point
-    "weakest"        => [], // bottom modules by grade_point
-    "retakes"        => [], // modules currently on retake
-];
-
-if ($hasResults) {
-    $totalGP = 0;
-    $count   = 0;
-    foreach ($pastResults as $r) {
-        $totalGP += (float)$r["grade_point"];
-        $count++;
-        if (strcasecmp($r["status_retake_pass"], "Pass") !== 0) {
-            $performanceSummary["retakes"][] = $r;
-        }
-    }
-    $performanceSummary["overall_avg_gp"] = $count ? round($totalGP / $count, 2) : null;
-
-    $sorted = $pastResults;
-    usort($sorted, fn($a, $b) => $b["grade_point"] <=> $a["grade_point"]);
-    $performanceSummary["strongest"] = array_slice($sorted, 0, 3);
-    $performanceSummary["weakest"]   = array_slice(array_reverse($sorted), 0, 3);
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// RECOMMENDATION ENGINE
-// Produces, for each next-semester module:
-//   - priority ("high" | "medium" | "standard") based on career overlap + past performance
-//   - key_concepts (string)
-//   - real_world_use (string)
-//   - rationale (string) — why this matters given the student's chosen careers/performance
-// ════════════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════════════
-// SHARED SUBJECT-AREA LIBRARY
-// Used both by the always-visible "Your Upcoming Modules" section and by
-// the career-matched recommendation engine below, so module → subject-area
-// detection only happens in one place.
+// KNOWLEDGE BASE
 // ════════════════════════════════════════════════════════════════════════
 function getConceptLibrary(): array {
     return [
-        "security"     => [
-            "concepts" => ["Encryption", "Firewalls", "Risk assessment", "Authentication protocols"],
-            "roles"    => ["Security Analyst", "SOC Analyst", "Penetration Tester", "Information Security Officer"],
-        ],
-        "network"      => [
-            "concepts" => ["TCP/IP", "Routing & switching", "Network protocols", "Bandwidth management"],
-            "roles"    => ["Network Engineer", "Network Administrator", "Cloud Network Specialist", "Telecom Engineer"],
-        ],
-        "database"     => [
-            "concepts" => ["SQL", "Normalization", "Indexing", "Transactions"],
-            "roles"    => ["Database Administrator", "Backend Developer", "Data Engineer"],
-        ],
-        "design"       => [
-            "concepts" => ["Wireframing", "Usability heuristics", "Prototyping", "Accessibility"],
-            "roles"    => ["UI/UX Designer", "Product Designer", "Front-End Developer"],
-        ],
-        "system"       => [
-            "concepts" => ["Distributed systems", "APIs", "Scalability", "Fault tolerance"],
-            "roles"    => ["Software Engineer", "Systems Architect", "DevOps Engineer", "Cloud Engineer"],
-        ],
-        "audit"        => [
-            "concepts" => ["Compliance", "Governance frameworks", "Risk controls", "Internal audit"],
-            "roles"    => ["IT Auditor", "Compliance Officer", "Risk Analyst", "Governance Consultant"],
-        ],
-        "professional" => [
-            "concepts" => ["Ethics", "Stakeholder communication", "IT law", "Professional conduct"],
-            "roles"    => ["IT Consultant", "Project Coordinator", "Business Analyst"],
-        ],
-        "data"         => [
-            "concepts" => ["Data modeling", "Statistics", "Visualization", "ETL pipelines"],
-            "roles"    => ["Data Analyst", "Data Scientist", "BI Developer"],
-        ],
-        "mobile"       => [
-            "concepts" => ["App lifecycle", "Cross-platform frameworks", "UI components", "Push notifications"],
-            "roles"    => ["Mobile App Developer", "iOS/Android Engineer"],
-        ],
-        "web"          => [
-            "concepts" => ["HTML/CSS", "Client-server model", "Responsive design", "Web frameworks"],
-            "roles"    => ["Web Developer", "Front-End Developer", "Full-Stack Developer"],
-        ],
-        "programming"  => [
-            "concepts" => ["Algorithms", "Data structures", "OOP principles", "Version control (Git)"],
-            "roles"    => ["Software Developer", "Systems Programmer"],
-        ],
-        "project"      => [
-            "concepts" => ["Scope management", "Agile/Scrum", "Stakeholder planning", "Risk management"],
-            "roles"    => ["IT Project Manager", "Scrum Master", "Delivery Lead"],
-        ],
-        "default"      => [
-            "concepts" => ["Problem-solving", "Technical documentation", "Collaboration tools", "Critical thinking"],
-            "roles"    => ["IT Generalist", "Technical Support Specialist", "Junior Developer"],
-        ],
+        "security"     => ["concepts" => ["Encryption","Firewalls","Risk assessment","Authentication protocols"], "roles" => ["Security Analyst","SOC Analyst","Penetration Tester","Information Security Officer"]],
+        "network"      => ["concepts" => ["OSI & TCP/IP models","IP addressing & subnetting","Network protocols (HTTP, FTP, DNS)","Data transmission & bandwidth","Network security fundamentals","Cloud & distributed basics"], "roles" => ["Network Engineer","Network Administrator","Cloud Network Specialist","Telecom Engineer"]],
+        "database"     => ["concepts" => ["Advanced SQL & query optimisation","Normalisation (3NF, BCNF)","Stored procedures & triggers","Transactions & ACID","NoSQL & modern paradigms","Database security"], "roles" => ["Database Administrator","Backend Developer","Data Engineer"]],
+        "design"       => ["concepts" => ["Wireframing","Usability heuristics","Prototyping","Accessibility","Design systems"], "roles" => ["UI/UX Designer","Product Designer","Front-End Developer"]],
+        "system"       => ["concepts" => ["Requirements gathering","UML diagrams & modelling","System lifecycle (SDLC)","Feasibility studies","Process flow & data-flow diagrams","Prototyping techniques"], "roles" => ["Software Engineer","Systems Architect","DevOps Engineer","Cloud Engineer"]],
+        "audit"        => ["concepts" => ["Compliance","Governance frameworks","Risk controls","Internal audit"], "roles" => ["IT Auditor","Compliance Officer","Risk Analyst","Governance Consultant"]],
+        "professional" => ["concepts" => ["Ethics","Stakeholder communication","IT law","Professional conduct"], "roles" => ["IT Consultant","Project Coordinator","Business Analyst"]],
+        "data"         => ["concepts" => ["Data modeling","Statistics","Visualization","ETL pipelines"], "roles" => ["Data Analyst","Data Scientist","BI Developer"]],
+        "mobile"       => ["concepts" => ["App lifecycle","Cross-platform frameworks","UI components","Push notifications"], "roles" => ["Mobile App Developer","iOS/Android Engineer"]],
+        "web"          => ["concepts" => ["HTML, CSS & JavaScript","Responsive & adaptive design","Front-end frameworks","Web server configuration","Web security basics","CMS & deployment"], "roles" => ["Web Developer","Front-End Developer","Full-Stack Developer"]],
+        "programming"  => ["concepts" => ["Classes & encapsulation","Inheritance & polymorphism","Abstraction & interfaces","Design patterns (MVC, Singleton)","Exception handling","OO analysis & UML"], "roles" => ["Software Engineer","Backend Developer","Mobile App Developer"]],
+        "project"      => ["concepts" => ["Scope management","Agile/Scrum","Stakeholder planning","Risk management"], "roles" => ["IT Project Manager","Scrum Master","Delivery Lead"]],
+        "business"     => ["concepts" => ["Business plan development","Small business finance","Market analysis","Risk management","Entrepreneurial mindset","Startup operations"], "roles" => ["Business Analyst","Product Manager","Founder / Entrepreneur"]],
+        "default"      => ["concepts" => ["Problem-solving","Technical documentation","Collaboration tools","Critical thinking"], "roles" => ["IT Generalist","Technical Support Specialist","Junior Developer"]],
     ];
 }
 
-/**
- * Detects which subject area(s) a module belongs to, based on keywords in
- * its name. Shared by both the always-visible module details and the
- * career-matched recommendation engine.
- */
-function detectModuleAreas(string $moduleName, array $conceptLibrary): array {
-    $nameLower = strtolower($moduleName);
-    $matched = [];
-    foreach ($conceptLibrary as $area => $info) {
-        if ($area !== "default" && str_contains($nameLower, $area)) {
-            $matched[] = $area;
-        }
-    }
-    return $matched ?: ["default"];
+function getAreaExtras(): array {
+    return [
+        "programming" => ["rw" => "Object-oriented programming is the dominant paradigm in professional software development — used in Java, Python and C# to build scalable, maintainable, reusable codebases. Mastery of OOP is a non-negotiable requirement for virtually every software role.", "project" => "Build a library-management system in Java: model Books, Members and Loans as classes, then use inheritance for e-book and reference-only types and a design pattern to handle overdue notifications.", "demand" => ["Very high", 92]],
+        "web"         => ["rw" => "Web development is one of the most in-demand skill sets in the software industry, powering everything from e-commerce platforms to enterprise dashboards. Proficiency here directly expands your employability as a full-stack or front-end developer.", "project" => "Build and deploy a responsive multi-page site with a working contact form, clean semantic HTML and accessible CSS.", "demand" => ["Very high", 90]],
+        "database"    => ["rw" => "Almost every software application relies on a robust database backend; advanced database skills let developers design efficient data layers, optimise performance and handle large-scale data reliably. This expertise is highly valued in full-stack and back-end roles.", "project" => "Design a normalised schema for a real domain, then write optimised queries, a view and a stored procedure against sample data.", "demand" => ["Very high", 88]],
+        "system"      => ["rw" => "Software developers use systems analysis to translate client requirements into structured, buildable solutions before writing a single line of code. It is a critical bridge between stakeholder needs and technical implementation on every professional team.", "project" => "Produce a full requirements-and-design package (use-case, class and sequence diagrams) for a small business system.", "demand" => ["High", 84]],
+        "network"     => ["rw" => "Software developers must understand how data travels across networks to build reliable, secure, performant applications — especially when working with APIs, cloud services or distributed systems. Network knowledge is essential for debugging connectivity and designing scalable architectures.", "project" => "Map and document a small LAN, then capture and analyse traffic to explain how a web request travels end to end.", "demand" => ["High", 80]],
+        "data"        => ["rw" => "Turning raw data into insight is a fast-growing, cross-industry skill spanning analytics, reporting and machine learning — increasingly expected even of general software roles.", "project" => "Take a public dataset, clean it, and build a short dashboard that answers three concrete questions about it.", "demand" => ["Very high", 88]],
+        "security"    => ["rw" => "Cybersecurity skills are in critical shortage worldwide; securing systems and data is a top priority for every serious organisation, from banks to government.", "project" => "Run a basic security assessment of a sample application: identify vulnerabilities and propose concrete, prioritised mitigations.", "demand" => ["Very high", 90]],
+        "design"      => ["rw" => "Product and interface design is how software wins and keeps users; strong UX skills make you valuable across product and front-end teams.", "project" => "Design and prototype a three-screen mobile flow in Figma, then test it with two users and iterate on their feedback.", "demand" => ["High", 78]],
+        "audit"       => ["rw" => "IT governance, risk and audit skills bridge technology and the business — increasingly required as firms modernise operations and face compliance pressure.", "project" => "Perform a lightweight controls review of a process and produce a short findings-and-recommendations report.", "demand" => ["Steady", 64]],
+        "professional"=> ["rw" => "Professional practice — ethics, communication and stakeholder management — is what turns a capable technician into a trusted colleague and consultant.", "project" => "Prepare and deliver a short stakeholder briefing that translates a technical decision into plain business terms.", "demand" => ["Steady", 66]],
+        "project"     => ["rw" => "Project planning and delivery skills (Agile, scope, risk) are what actually get software shipped, and are valued in every role that touches delivery.", "project" => "Plan a two-week sprint for a small feature: backlog, estimates, a simple burndown and a risk log.", "demand" => ["High", 76]],
+        "business"    => ["rw" => "Enables software developers to understand the business context of the products they build and potentially launch their own tech ventures. Foundational for evaluating client needs and project viability in a development career.", "project" => "Draft a one-page business model for a small software product idea: customers, value, costs and a first go-to-market step.", "demand" => ["Standard", 60]],
+        "mobile"      => ["rw" => "Mobile development remains in high demand as businesses meet their users on phones first.", "project" => "Build a simple two-screen mobile app that stores and lists items locally.", "demand" => ["High", 82]],
+        "default"     => ["rw" => "These are foundational skills that apply across almost every IT role, and a strong grade here signals reliability to future employers.", "project" => "Apply this module's core ideas to a small self-chosen practical task and document your approach and result.", "demand" => ["Steady", 62]],
+    ];
 }
 
-/**
- * Builds always-visible module detail cards (credit units + CGPA framing,
- * key concepts, real-world relevance, career prospects) — independent of
- * any career interest selection. This is what makes the page useful the
- * moment a student lands on it, before they've chosen anything.
- */
-function buildModuleDetails(array $nextModules, array $allNextModulesForCgpaContext): array {
-    $conceptLibrary = getConceptLibrary();
-
-    // Total credit units across the whole upcoming semester, so we can frame
-    // each module's relative "weight" in the semester's GPA calculation.
-    $semesterTotalCU = array_sum(array_map(fn($m) => (float)$m["credit_unit"], $allNextModulesForCgpaContext));
-
-    $details = [];
-    foreach ($nextModules as $mod) {
-        $cu = (float)$mod["credit_unit"];
-        $shareOfSemester = $semesterTotalCU > 0 ? round(($cu / $semesterTotalCU) * 100) : 0;
-
-        $areas = detectModuleAreas($mod["module_name"], $conceptLibrary);
-
-        $concepts = [];
-        $roles    = [];
-        foreach ($areas as $area) {
-            $concepts = array_merge($concepts, $conceptLibrary[$area]["concepts"]);
-            $roles    = array_merge($roles, $conceptLibrary[$area]["roles"]);
-        }
-        $concepts = array_slice(array_unique($concepts), 0, 6);
-        $roles    = array_slice(array_unique($roles), 0, 4);
-
-        $areaLabel = $areas === ["default"] ? "general IT problem-solving" : strtolower(implode(", ", $areas));
-
-        // Plain-language CGPA-weight framing based on relative credit units.
-        if ($cu >= 4) {
-            $cgpaNote = "This is one of your heavier modules ({$cu} credit units — about {$shareOfSemester}% of this semester's total). Performing well here moves your GPA more than a lighter module would.";
-        } elseif ($cu <= 3 && $cu > 0) {
-            $cgpaNote = "This module carries {$cu} credit units (about {$shareOfSemester}% of this semester's total) — lighter weight, but it still counts toward your GPA, so don't write it off.";
-        } else {
-            $cgpaNote = "Credit unit weighting for this module wasn't available — check with the academic office to confirm how it factors into your GPA.";
-        }
-
-        $details[] = [
-            "module_code"   => $mod["module_code"],
-            "module_name"   => $mod["module_name"],
-            "credit_unit"   => $cu,
-            "share_pct"     => $shareOfSemester,
-            "cgpa_note"     => $cgpaNote,
-            "key_concepts"  => $concepts,
-            "real_world_use"=> "These concepts are commonly applied in roles involving {$areaLabel}.",
-            "career_roles"  => $roles,
-        ];
-    }
-
-    return $details;
-}
-
-/**
- * Rich, static knowledge base describing each career interest in depth.
- * Keyed by the exact labels in $careerOptions. The "areas" list ties each
- * career back to the shared concept library so we can match the student's
- * modules and past grades against it.
- */
 function getCareerProfiles(): array {
     return [
-        "Software Development" => [
-            "icon"       => "💻",
-            "summary"    => "Designing, building, and maintaining the applications and systems that power modern life — from web platforms to enterprise backends.",
-            "roles"      => ["Software Engineer", "Backend Developer", "Full-Stack Developer", "Mobile App Developer", "DevOps Engineer"],
-            "skills"     => ["Algorithmic problem-solving", "Object-oriented design", "Version control (Git)", "Testing & debugging", "API design"],
-            "tools"      => ["Git & GitHub", "VS Code", "Docker", "Postman", "CI/CD pipelines"],
-            "industries" => ["Fintech", "E-commerce", "Health tech", "Gaming", "SaaS startups"],
-            "outlook"    => "Consistently one of the highest-demand fields in tech.",
-            "areas"      => ["system", "database", "programming", "web"],
-        ],
-        "Data Science & Analytics" => [
-            "icon"       => "📊",
-            "summary"    => "Turning raw data into decisions — using statistics, machine learning, and visualization to uncover patterns and predict outcomes.",
-            "roles"      => ["Data Analyst", "Data Scientist", "BI Developer", "Machine Learning Engineer", "Data Engineer"],
-            "skills"     => ["Statistics & probability", "Data cleaning & wrangling", "SQL querying", "Data visualization", "Model building"],
-            "tools"      => ["Python (pandas, scikit-learn)", "SQL", "Power BI / Tableau", "Jupyter", "Excel"],
-            "industries" => ["Banking", "Marketing", "Healthcare", "Government", "Retail"],
-            "outlook"    => "Rapidly growing as every industry becomes data-driven.",
-            "areas"      => ["data", "database"],
-        ],
-        "Network & Cybersecurity" => [
-            "icon"       => "🔒",
-            "summary"    => "Protecting organisations from digital threats while keeping networks fast, reliable, and secure.",
-            "roles"      => ["Security Analyst", "SOC Analyst", "Penetration Tester", "Network Engineer", "Information Security Officer"],
-            "skills"     => ["Threat analysis", "Encryption & authentication", "Network protocols (TCP/IP)", "Firewall configuration", "Incident response"],
-            "tools"      => ["Wireshark", "Nmap", "Kali Linux", "Splunk", "Cisco IOS"],
-            "industries" => ["Banking", "Defence", "Telecom", "Cloud providers", "Consulting"],
-            "outlook"    => "Critical shortage of skilled professionals worldwide.",
-            "areas"      => ["security", "network"],
-        ],
-        "Systems & Cloud Engineering" => [
-            "icon"       => "☁️",
-            "summary"    => "Designing and running the large-scale, distributed infrastructure that keeps modern applications online and scalable.",
-            "roles"      => ["Cloud Engineer", "DevOps Engineer", "Systems Architect", "Site Reliability Engineer", "Infrastructure Engineer"],
-            "skills"     => ["Distributed systems", "Scalability & fault tolerance", "Automation & scripting", "Containerisation", "Networking fundamentals"],
-            "tools"      => ["AWS / Azure / GCP", "Docker & Kubernetes", "Terraform", "Linux", "Ansible"],
-            "industries" => ["Cloud providers", "Enterprise IT", "Streaming", "Fintech", "Telecom"],
-            "outlook"    => "Booming as organisations migrate to the cloud.",
-            "areas"      => ["system", "network"],
-        ],
-        "Business & IT Consulting" => [
-            "icon"       => "📈",
-            "summary"    => "Bridging the gap between business goals and technology — advising organisations on strategy, governance, and digital transformation.",
-            "roles"      => ["IT Consultant", "Business Analyst", "IT Auditor", "Project Manager", "Governance Consultant"],
-            "skills"     => ["Stakeholder communication", "Requirements analysis", "Governance & compliance", "Project management", "Risk assessment"],
-            "tools"      => ["Jira", "Microsoft Project", "Visio", "Power BI", "COBIT / ITIL frameworks"],
-            "industries" => ["Consulting firms", "Banking", "Government", "Healthcare", "Manufacturing"],
-            "outlook"    => "Steady demand as firms modernise their operations.",
-            "areas"      => ["audit", "professional", "project"],
-        ],
-        "UI/UX & Product Design" => [
-            "icon"       => "🎨",
-            "summary"    => "Crafting digital products that are intuitive, accessible, and enjoyable — where design meets user psychology and technology.",
-            "roles"      => ["UI/UX Designer", "Product Designer", "Interaction Designer", "Front-End Developer", "UX Researcher"],
-            "skills"     => ["User research", "Wireframing & prototyping", "Usability & accessibility", "Visual design", "Design systems"],
-            "tools"      => ["Figma", "Adobe XD", "Sketch", "InVision", "Miro"],
-            "industries" => ["Product startups", "Agencies", "E-commerce", "Media", "Enterprise software"],
-            "outlook"    => "Growing as companies compete on user experience.",
-            "areas"      => ["design", "web"],
-        ],
+        "Software Development"        => ["areas" => ["system","database","programming","web"], "support" => ["network","data","project","mobile"]],
+        "Data Science & Analytics"    => ["areas" => ["data","database"], "support" => ["programming","system"]],
+        "Network & Cybersecurity"     => ["areas" => ["security","network"], "support" => ["system"]],
+        "Systems & Cloud Engineering" => ["areas" => ["system","network"], "support" => ["database","programming"]],
+        "Business & IT Consulting"    => ["areas" => ["audit","professional","project","business"], "support" => ["data","system"]],
+        "UI/UX & Product Design"      => ["areas" => ["design","web"], "support" => ["mobile"]],
     ];
 }
 
+function detectModuleAreas(string $moduleName): array {
+    $nameLower = strtolower($moduleName);
+    $keywords = [
+        'object oriented' => 'programming', 'programming' => 'programming', 'software eng' => 'programming',
+        'web' => 'web', 'internet' => 'web', 'multimedia' => 'web',
+        'database' => 'database', 'sql' => 'database',
+        'network' => 'network', 'data communication' => 'network',
+        'security' => 'security',
+        'system' => 'system', 'operating system' => 'system', 'analysis and design' => 'system', 'distributed' => 'system',
+        'mobile' => 'mobile',
+        'data' => 'data', 'statistic' => 'data', 'research method' => 'data',
+        'audit' => 'audit', 'governance' => 'audit',
+        'professional' => 'professional', 'ethic' => 'professional', 'communication skills' => 'professional',
+        'project' => 'project',
+        'user interface' => 'design', 'design' => 'design',
+        'entrepreneur' => 'business', 'business' => 'business', 'e-commerce' => 'business',
+    ];
+    $matched = [];
+    foreach ($keywords as $kw => $area) {
+        if (str_contains($nameLower, $kw)) { $matched[$area] = true; }
+    }
+    return $matched ? array_keys($matched) : ["default"];
+}
+
+function priorityLabel(string $p): string {
+    return match($p) { 'high' => 'High priority', 'medium' => 'Medium priority', default => 'Standard priority' };
+}
+
 /**
- * Cross-references each selected career against the student's own data:
- *   - which UPCOMING modules feed that career (via shared subject areas)
- *   - the student's PAST track record in related modules (avg GP, best/worst)
- *   - a plain-language readiness note based on that average
- * Produces one insight card per selected career for the Career Planner tab.
+ * Builds one full "dossier" per upcoming module: priority + matched career for
+ * the current selection, concepts, real-world use, a build-this-semester project,
+ * career roles, market demand, and a rule-based personalised insight.
  */
-function buildCareerInsights(array $selectedCareers, array $careerProfiles, array $nextModules, array $pastResults, array $conceptLibrary): array {
-    $insights = [];
-    foreach ($selectedCareers as $career) {
-        $profile = $careerProfiles[$career] ?? null;
-        if (!$profile) { continue; }
-        $areas = $profile["areas"];
+function buildDossier(array $nextModules, array $selectedCareers, array $pastResults): array {
+    $lib      = getConceptLibrary();
+    $extras   = getAreaExtras();
+    $profiles = getCareerProfiles();
+    $out = [];
 
-        // Upcoming modules that feed this career path
-        $relevantUpcoming = [];
-        foreach ($nextModules as $m) {
-            if (array_intersect(detectModuleAreas($m["module_name"], $conceptLibrary), $areas)) {
-                $relevantUpcoming[] = $m["module_name"];
+    foreach ($nextModules as $mod) {
+        $areas   = detectModuleAreas($mod["module_name"]);
+        $primary = $areas[0];
+
+        $concepts = []; $roles = [];
+        foreach ($areas as $a) {
+            $concepts = array_merge($concepts, $lib[$a]["concepts"] ?? []);
+            $roles    = array_merge($roles,    $lib[$a]["roles"] ?? []);
+        }
+        $concepts = array_slice(array_values(array_unique($concepts)), 0, 6);
+        $roles    = array_slice(array_values(array_unique($roles)), 0, 3);
+
+        $ex = $extras[$primary] ?? $extras["default"];
+
+        // Priority + matched career against the selected interests
+        $priority = "standard"; $matched = null;
+        foreach ($selectedCareers as $c) {
+            if (array_intersect($areas, $profiles[$c]["areas"] ?? [])) { $priority = "high"; $matched = $c; break; }
+        }
+        if ($priority !== "high") {
+            foreach ($selectedCareers as $c) {
+                if (array_intersect($areas, $profiles[$c]["support"] ?? [])) { $priority = "medium"; $matched = $matched ?? $c; break; }
             }
         }
 
-        // Past track record in this career's subject areas
-        $matchGPs = [];
-        $bestPast = null;
-        $worstPast = null;
+        // Weakest related past module, for a grounded insight
+        $relWeak = null;
         foreach ($pastResults as $r) {
-            if (array_intersect(detectModuleAreas($r["module_name"], $conceptLibrary), $areas)) {
-                $gp = (float)$r["grade_point"];
-                $matchGPs[] = $gp;
-                if ($bestPast === null  || $gp > (float)$bestPast["grade_point"])  { $bestPast  = $r; }
-                if ($worstPast === null || $gp < (float)$worstPast["grade_point"]) { $worstPast = $r; }
+            if (array_intersect(detectModuleAreas($r["module_name"]), $areas)) {
+                if ($relWeak === null || (float)$r["grade_point"] < (float)$relWeak["grade_point"]) { $relWeak = $r; }
             }
         }
-        $avgGp = $matchGPs ? round(array_sum($matchGPs) / count($matchGPs), 2) : null;
-
-        if ($avgGp === null) {
-            $readiness = "You haven't taken modules directly tied to this path yet — your upcoming semester is a good place to start building toward it.";
-            $readyLevel = "new";
-        } elseif ($avgGp >= 4.0) {
-            $readiness = "Strong track record — your average grade point of {$avgGp} in related modules shows real aptitude for this path.";
-            $readyLevel = "strong";
-        } elseif ($avgGp >= 3.0) {
-            $readiness = "Solid foundation — you're averaging {$avgGp} in related modules. Focused effort could push you into the top tier for this path.";
-            $readyLevel = "solid";
+        $frame = $priority === "high" ? "the single most important module" : ($priority === "medium" ? "a strong supporting module" : "a foundational module");
+        $insight = "This is {$frame}" . ($matched ? " for your " . $matched . " path." : " for your overall degree.");
+        if ($relWeak && (float)$relWeak["grade_point"] < 4.0) {
+            $insight .= " Given your weaker grade in {$relWeak['module_name']} (GP {$relWeak['grade_point']}), early deliberate practice here builds the foundation everything else stands on.";
+        } elseif ($relWeak) {
+            $insight .= " Your strong record in related work (e.g. {$relWeak['module_name']}, {$relWeak['letter_grade']}) means you can realistically aim for a top grade.";
         } else {
-            $readiness = "This path needs attention — your average of {$avgGp} in related modules suggests some targeted improvement would help before you commit to it.";
-            $readyLevel = "attention";
+            $insight .= " Build good habits from week one — consistent effort here compounds across the rest of your programme.";
         }
 
-        $insights[] = [
-            "career"            => $career,
-            "profile"           => $profile,
-            "relevant_upcoming" => $relevantUpcoming,
-            "avg_gp"            => $avgGp,
-            "best_past"         => $bestPast,
-            "worst_past"        => $worstPast,
-            "readiness"         => $readiness,
-            "ready_level"       => $readyLevel,
+        $out[] = [
+            "code"        => $mod["module_code"],
+            "name"        => $mod["module_name"],
+            "cu"          => (float)$mod["credit_unit"],
+            "priority"    => $priority,
+            "matched"     => $matched,
+            "concepts"    => $concepts,
+            "roles"       => $roles,
+            "real_world"  => $ex["rw"],
+            "project"     => $ex["project"],
+            "demand_lvl"  => $ex["demand"][0],
+            "demand_pct"  => $ex["demand"][1],
+            "insight"     => $insight,
         ];
     }
-    return $insights;
+
+    $rank = ["high" => 0, "medium" => 1, "standard" => 2];
+    usort($out, fn($a, $b) => $rank[$a["priority"]] <=> $rank[$b["priority"]]);
+    return $out;
 }
 
-/**
- * Calls the Anthropic API to generate richer, more specific recommendations.
- * Returns null on any failure and writes a human-readable reason into
- * $errorMsg (passed by reference) so the page can show exactly what went wrong.
- */
-function getApiRecommendations(array $nextModules, array $selectedCareers, array $performanceSummary, string $studentName, string &$errorMsg = ''): ?array {
-    if (empty(ANTHROPIC_API_KEY)) {
-        $errorMsg = 'No API key configured — set ANTHROPIC_API_KEY at the top of this file.';
-        return null;
-    }
+$dossier = buildDossier($nextModules, $selectedCareers, $pastResults);
+$cuFmt   = fn($cu) => rtrim(rtrim(number_format((float)$cu, 1), '0'), '.');
 
-    $modulesPayload = array_map(fn($m) => [
-        "code"        => $m["module_code"],
-        "name"        => $m["module_name"],
-        "credit_unit" => $m["credit_unit"],
-    ], $nextModules);
-
-    $strongest = array_map(fn($r) => $r["module_name"] . " (GP {$r['grade_point']})", $performanceSummary["strongest"] ?? []);
-    $weakest   = array_map(fn($r) => $r["module_name"] . " (GP {$r['grade_point']})", $performanceSummary["weakest"] ?? []);
-
-    $systemPrompt = "You are an academic advisor for a university IT/computing program. " .
-        "Given a student's career interests, past academic performance, and their upcoming " .
-        "semester's modules, return ONLY valid JSON (no markdown, no preamble) — an array where " .
-        "each object has: module_code, module_name, priority ('high'|'medium'|'standard'), " .
-        "key_concepts (array of 4-6 short strings), real_world_use (1-2 sentences), " .
-        "rationale (1 sentence tying it to the student's chosen careers/performance).";
-
-    $userPrompt = json_encode([
-        "student_name"     => $studentName,
-        "career_interests" => $selectedCareers,
-        "strongest_areas"  => $strongest,
-        "weakest_areas"    => $weakest,
-        "upcoming_modules" => $modulesPayload,
-    ]);
-
-    $payload = [
-        "model"      => "claude-sonnet-4-6",
-        "max_tokens" => 2000,
-        "system"     => $systemPrompt,
-        "messages"   => [
-            ["role" => "user", "content" => $userPrompt],
-        ],
+// Compact per-module context sent to GoalInsight.php so Claude can explain the
+// MODULE (its topics, relevance, roles) as well as tie it to the student.
+$insightData = [];
+foreach ($dossier as $d) {
+    $insightData[$d["code"]] = [
+        "concepts"   => $d["concepts"],
+        "real_world" => $d["real_world"],
+        "roles"      => $d["roles"],
+        "matched"    => $d["matched"],
+        "priority"   => $d["priority"],
+        "demand"     => $d["demand_lvl"],
     ];
-
-    $ch = curl_init("https://api.anthropic.com/v1/messages");
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_HTTPHEADER     => [
-            "Content-Type: application/json",
-            "x-api-key: " . ANTHROPIC_API_KEY,
-            "anthropic-version: 2023-06-01",
-        ],
-        CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT    => 45,
-        // Required on WAMP/Windows — the bundled CA bundle often can't verify certs
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => 0,
-    ]);
-    $response  = curl_exec($ch);
-    $curlError = curl_error($ch);
-    $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($response === false) {
-        $errorMsg = "cURL failed: {$curlError}";
-        return null;
-    }
-    if ($httpCode !== 200) {
-        $body   = json_decode($response, true);
-        $detail = $body['error']['message'] ?? substr($response, 0, 300);
-        $errorMsg = "Anthropic returned HTTP {$httpCode}: {$detail}";
-        return null;
-    }
-
-    $data = json_decode($response, true);
-    $text = $data["content"][0]["text"] ?? null;
-    if (!$text) {
-        $errorMsg = 'Anthropic responded but returned no text content. Full response: ' . substr($response, 0, 300);
-        return null;
-    }
-
-    // Strip accidental markdown fences if the model adds them
-    $clean  = trim(preg_replace('/^```json|```$/m', '', $text));
-    $parsed = json_decode($clean, true);
-    if (!is_array($parsed)) {
-        $errorMsg = 'Anthropic returned non-JSON content: ' . substr($clean, 0, 300);
-        return null;
-    }
-
-    return $parsed;
 }
-
-// ─── Run the recommendation engine (only after the student submits interests) ─
-// Pure API mode: no rule-based fallback. If the call fails, $apiErrorMsg holds
-// the reason and the page shows it so you can confirm whether the API works.
-$recommendations = [];
-$apiErrorMsg     = '';
-$apiFailed       = false;
-if ($hasSubmitted && !empty($nextModules)) {
-    $recommendations = getApiRecommendations(
-        $nextModules,
-        $selectedCareers,
-        $performanceSummary,
-        $student["student_name"],
-        $apiErrorMsg
-    );
-    if ($recommendations === null) {
-        $apiFailed       = true;
-        $recommendations = [];
-    }
-}
-
-// ─── In-depth insights for each selected career (independent of the API) ──────
-$careerInsights = [];
-if ($hasSubmitted) {
-    $careerInsights = buildCareerInsights(
-        $selectedCareers,
-        getCareerProfiles(),
-        $nextModules,
-        $pastResults,
-        getConceptLibrary()
-    );
-}
-
-// ─── Priority badge CSS class helper ──────────────────────────────────────────
-function priorityClass(string $p): string {
-    return match($p) {
-        'high'   => 'badge-high',
-        'medium' => 'badge-medium',
-        default  => 'badge-standard',
-    };
-}
-
-// ─── Always-visible module details (credit unit/CGPA weight, concepts,
-//     real-world relevance, career prospects) — no career selection needed ───
-$moduleDetails = buildModuleDetails($nextModules, $nextModules);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Goal Planning – Cavendish Portal</title>
+    <title>Career &amp; Module Planner – Cavendish Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; font-size: 14px; color: #101828; background: #eef0f5; }
 
-        body { font-family: 'Inter', sans-serif; font-size: 14px; color: #111; background: #fff; }
-
-        .site-header {
-            display: flex; align-items: center; gap: 0.9rem;
-            padding: 1rem 1.5rem; background: #213769; border-bottom: 1px solid #16213f;
-        }
-        .site-header .crest {
-            width: 2.6rem; height: 2.6rem; object-fit: contain; flex: 0 0 auto;
-            background: #fff; border-radius: 6px; padding: 2px;
-        }
+        .site-header { display: flex; align-items: center; gap: .9rem; padding: 1rem 1.5rem; background: #213769; border-bottom: 1px solid #16213f; }
+        .site-header .crest { width: 2.6rem; height: 2.6rem; object-fit: contain; flex: 0 0 auto; background: #fff; border-radius: 6px; padding: 2px; }
         .header-text { display: flex; flex-direction: column; line-height: 1.25; }
         .site-header .uni-name { font-weight: 600; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #d9c581; }
         .site-header .portal-title { font-weight: 700; font-size: 1.05rem; color: #fff; }
@@ -603,199 +263,98 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
         .logout-btn { color: #cdd6ef; font-size: .8rem; font-weight: 600; text-decoration: none; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: .35rem .9rem; white-space: nowrap; transition: background .15s, color .15s; }
         .logout-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
 
-        .tab-nav { display: flex; gap: .35rem; padding: 0 1.5rem; background: #16213f; border-bottom: 1px solid #0d1730; }
-        .tab-btn {
-            padding: .8rem 1.1rem .7rem; border: none; background: transparent;
-            font-size: .85rem; font-weight: 600; cursor: pointer; color: rgba(255,255,255,0.68);
-            text-decoration: none; border-bottom: 3px solid transparent;
-            transition: color .15s, border-color .15s, background .15s;
-        }
-        .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.06); }
+        .tab-nav { display: flex; gap: .35rem; padding: 0 1.5rem; background: #16213f; border-bottom: 1px solid #0d1730; overflow-x: auto; }
+        .tab-btn { padding: .8rem 1.1rem .7rem; border: none; background: transparent; font-size: .85rem; font-weight: 600; cursor: pointer; white-space: nowrap; color: rgba(255,255,255,.68); text-decoration: none; border-bottom: 3px solid transparent; }
+        .tab-btn:hover { color: #fff; background: rgba(255,255,255,.06); }
         .tab-btn.active { color: #fff; border-bottom-color: #c9a227; }
 
-        .page-wrap { max-width: 1000px; margin: 1.5rem auto; padding: 0 1.5rem 3rem; }
-
-        .student-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1.5rem; }
+        .page-wrap { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem 3rem; }
+        .student-row { display: flex; justify-content: space-between; align-items: baseline; margin: 1.4rem 0 1rem; }
         .student-name { font-size: 1rem; font-weight: 700; }
-        .student-sid  { font-size: .95rem; font-weight: 400; }
-        .student-sid strong { font-weight: 700; margin-right: .35rem; }
+        .student-sid { font-size: .95rem; color: #475467; }
+        .student-sid strong { font-weight: 700; margin-right: .35rem; color: #213769; }
 
-        .card { border: 1px solid #999; border-radius: 6px; margin-bottom: 1.75rem; overflow: hidden; }
-        .card-header {
-            background: #121e38; color: #fff; font-weight: 700; font-size: .92rem;
-            padding: .65rem 1rem; display: flex; align-items: center; justify-content: space-between;
-            flex-wrap: wrap; gap: .5rem;
-        }
-        .card-sub { font-size: .8rem; font-weight: 400; opacity: .85; }
-        .card-body { background: #e8e8e8; padding: 1.1rem 1rem 1.4rem; }
-
-        .career-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .75rem; }
-        .career-option {
-            background: #fff; border: 1px solid #aaa; border-radius: 6px; padding: .75rem .9rem;
-            cursor: pointer; transition: border-color .15s, background .15s; display: block;
-        }
-        .career-option:hover { border-color: #213769; }
-        .career-option input { margin-right: .5rem; }
-        .career-option .career-title { font-weight: 600; font-size: .9rem; }
-        .career-option .career-desc { font-size: .78rem; color: #555; margin-top: .25rem; line-height: 1.35; }
-        .career-option.checked { border-color: #213769; background: #eef1fa; }
-
-        .btn-submit {
-            margin-top: 1rem; padding: .55rem 1.4rem; border: none; border-radius: 20px;
-            background: #213769; color: #fff; font-weight: 600; font-size: .88rem; cursor: pointer;
-        }
-        .btn-submit:hover { background: #1a2c54; }
-
-        .stat-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: .25rem; }
-        .stat-box {
-            flex: 1; min-width: 150px; background: #fff; border: 1px solid #999;
-            border-radius: 6px; padding: .8rem 1rem;
-        }
-        .stat-box .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: #555; margin-bottom: .25rem; }
-        .stat-box .value { font-size: 1.3rem; font-weight: 700; color: #121e38; }
-        .mini-list { list-style: none; margin-top: .4rem; font-size: .82rem; }
-        .mini-list li { padding: .15rem 0; }
-
-        .module-rec {
-            background: #fff; border: 1px solid #999; border-radius: 6px;
-            padding: .9rem 1.1rem; margin-bottom: .9rem;
-        }
-        .module-rec:last-child { margin-bottom: 0; }
-        .module-rec-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; flex-wrap: wrap; }
-        .module-rec-title { font-weight: 700; font-size: .95rem; }
-        .module-rec-code  { font-size: .8rem; color: #555; font-weight: 500; }
-        .module-rec-cu    { font-size: .78rem; color: #555; margin-top: .15rem; }
-
-        .badge {
-            display: inline-block; font-size: .72rem; font-weight: 700; padding: .2rem .6rem;
-            border-radius: 12px; white-space: nowrap;
-        }
-        .badge-high     { background: #fde2e2; color: #991b1b; }
-        .badge-medium   { background: #fef3c7; color: #92400e; }
-        .badge-standard { background: #e0e7ff; color: #3730a3; }
-
-        .rec-section { margin-top: .6rem; }
-        .rec-label { font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #444; margin-bottom: .25rem; }
-        .concept-tags { display: flex; flex-wrap: wrap; gap: .35rem; }
-        .concept-tag { background: #eef1fa; border: 1px solid #c7cfe8; color: #213769; font-size: .78rem; padding: .2rem .55rem; border-radius: 10px; }
-        .rec-text { font-size: .85rem; color: #222; line-height: 1.45; }
-        .rationale { font-size: .82rem; font-style: italic; color: #444; margin-top: .5rem; }
-
-        .empty { text-align: center; padding: 2.5rem 1rem; color: #888; }
-
-        .api-error-banner {
-            background: #fef2f2; border: 1px solid #fca5a5; border-left: 4px solid #dc2626;
-            border-radius: 6px; padding: .75rem 1rem;
-            font-size: .82rem; color: #7f1d1d; line-height: 1.5;
-        }
-        .api-error-banner strong { display: block; font-size: .85rem; margin-bottom: .2rem; }
-        .api-ok-banner {
-            background: #ecfdf5; border: 1px solid #a7f3d0; border-left: 4px solid #10b981;
-            border-radius: 6px; padding: .6rem 1rem; margin-bottom: 1rem;
-            font-size: .82rem; color: #065f46; line-height: 1.5;
-        }
-
-        /* ── Upcoming module detail cards (always visible) ── */
-        .upcoming-grid { display: flex; flex-direction: column; gap: 1rem; }
-        .upcoming-card {
-            background: #fff; border: 1px solid #999; border-radius: 8px;
-            padding: 1.1rem 1.3rem; position: relative;
-        }
-        .upcoming-card-head {
-            display: flex; justify-content: space-between; align-items: flex-start;
-            gap: .75rem; flex-wrap: wrap; margin-bottom: .7rem;
-        }
-        .upcoming-title { font-weight: 700; font-size: 1rem; color: #16213f; }
-        .upcoming-code  { font-size: .8rem; color: #555; font-weight: 500; }
-        .cu-pill {
-            background: #213769; color: #fff; font-size: .76rem; font-weight: 700;
-            padding: .3rem .7rem; border-radius: 14px; white-space: nowrap;
-        }
-
-        .cgpa-note {
-            background: #fff7e6; border: 1px solid #f0d49a; color: #7a4b00;
-            font-size: .82rem; padding: .6rem .8rem; border-radius: 6px; margin-bottom: .8rem;
-            line-height: 1.45;
-        }
-
-        .upcoming-section { margin-top: .7rem; }
-        .upcoming-label {
-            font-size: .74rem; font-weight: 700; text-transform: uppercase;
-            letter-spacing: .04em; color: #444; margin-bottom: .35rem;
-        }
-        .role-tags { display: flex; flex-wrap: wrap; gap: .35rem; }
-        .role-tag {
-            background: #eef1fa; border: 1px solid #c7cfe8; color: #213769;
-            font-size: .78rem; padding: .2rem .55rem; border-radius: 10px;
-        }
-        .upcoming-text { font-size: .85rem; color: #222; line-height: 1.45; }
-
-        /* ── Sub-tabs (Module Planner / Career Planner) ── */
-        .sub-tabs {
-            display: flex; gap: .4rem; margin-bottom: 1.5rem;
-            border-bottom: 2px solid #d5d9e4;
-        }
-        .sub-tab {
-            padding: .7rem 1.4rem; border: none; background: transparent;
-            font-family: inherit; font-size: .9rem; font-weight: 600; cursor: pointer;
-            color: #5a6478; border-bottom: 3px solid transparent; margin-bottom: -2px;
-            display: inline-flex; align-items: center; gap: .4rem;
-            transition: color .15s, border-color .15s;
-        }
+        .sub-tabs { display: flex; gap: .4rem; margin-bottom: 1.5rem; border-bottom: 2px solid #d5d9e4; }
+        .sub-tab { padding: .7rem 1.4rem; border: none; background: transparent; font-family: inherit; font-size: .9rem; font-weight: 600; cursor: pointer; color: #5a6478; border-bottom: 3px solid transparent; margin-bottom: -2px; display: inline-flex; align-items: center; gap: .4rem; }
         .sub-tab:hover { color: #213769; }
         .sub-tab.active { color: #213769; border-bottom-color: #c9a227; }
-
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
 
-        /* ── Career in-depth insight cards ── */
-        .insight-card {
-            background: #fff; border: 1px solid #999; border-radius: 8px;
-            padding: 1.1rem 1.3rem; margin-bottom: 1.1rem;
-        }
-        .insight-card:last-child { margin-bottom: 0; }
-        .insight-head { display: flex; align-items: flex-start; gap: .7rem; margin-bottom: .5rem; }
-        .insight-icon { font-size: 1.7rem; line-height: 1; flex: 0 0 auto; }
-        .insight-title { font-weight: 700; font-size: 1.05rem; color: #16213f; }
-        .insight-summary { font-size: .85rem; color: #333; line-height: 1.5; margin-top: .15rem; }
+        .picker { background: #fff; border: 1px solid #e6e8ec; border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.05); overflow: hidden; margin-bottom: 1.5rem; }
+        .picker-head { background: #16213f; color: #fff; padding: .9rem 1.2rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+        .picker-head .t { font-weight: 700; font-size: 1rem; }
+        .picker-head .s { font-size: .8rem; color: #c7cede; }
+        .picker-body { padding: 1.1rem 1.2rem; }
+        .picker-body form { display: flex; flex-wrap: wrap; gap: .6rem; }
+        .cpill { position: relative; display: inline-flex; align-items: center; border: 1.5px solid #d0d5dd; background: #fff; color: #344054; border-radius: 999px; padding: .5rem 1rem; font-size: .85rem; font-weight: 600; cursor: pointer; user-select: none; white-space: nowrap; transition: all .12s; }
+        .cpill:hover { border-color: #213769; }
+        .cpill.on { background: #16213f; border-color: #16213f; color: #fff; }
 
-        .outlook-badge {
-            display: inline-block; margin-top: .55rem;
-            background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;
-            font-size: .78rem; font-weight: 600; padding: .25rem .65rem; border-radius: 12px;
-        }
+        .planner { display: flex; gap: 1.2rem; align-items: flex-start; }
+        .pm-sidebar { flex: 0 0 270px; background: #16213f; border-radius: 14px; overflow: hidden; }
+        .pm-side-head { padding: .9rem 1.1rem; color: #d9c581; font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,.08); }
+        .pm-side-head b { display: block; color: #fff; font-size: .95rem; letter-spacing: 0; text-transform: none; margin-top: .15rem; }
+        .pm-item { width: 100%; text-align: left; background: transparent; border: none; border-left: 3px solid transparent; padding: .8rem 1.1rem; cursor: pointer; color: #cdd6ef; display: block; }
+        .pm-item:hover { background: rgba(255,255,255,.05); }
+        .pm-item.active { background: rgba(255,255,255,.08); border-left-color: #c9a227; }
+        .pm-item .pm-name { font-weight: 600; font-size: .86rem; color: #fff; display: flex; align-items: center; gap: .5rem; }
+        .pm-item .dot { width: .6rem; height: .6rem; border-radius: 50%; flex: 0 0 auto; }
+        .pm-item .pm-meta { font-size: .74rem; color: #9fb0d6; margin-top: .2rem; margin-left: 1.1rem; }
+        .dot.high { background: #ef4444; } .dot.medium { background: #f59e0b; } .dot.standard { background: #3b6fe0; }
 
-        .insight-section { margin-top: .8rem; }
-        .insight-label {
-            font-size: .74rem; font-weight: 700; text-transform: uppercase;
-            letter-spacing: .04em; color: #444; margin-bottom: .35rem;
-        }
-        .skill-tag {
-            background: #eef1fa; border: 1px solid #c7cfe8; color: #213769;
-            font-size: .78rem; padding: .2rem .55rem; border-radius: 10px;
-        }
-        .tool-tag {
-            background: #fdf4e3; border: 1px solid #f0d49a; color: #7a4b00;
-            font-size: .78rem; padding: .2rem .55rem; border-radius: 10px;
-        }
-        .insight-industries { font-size: .84rem; color: #333; line-height: 1.5; }
+        .pm-detail { flex: 1 1 auto; min-width: 0; background: #fff; border: 1px solid #e6e8ec; border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.05); padding: 1.4rem 1.6rem; }
+        .pm-panel { display: none; }
+        .pm-panel.active { display: block; }
+        .matched-label { font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #b7791f; margin-bottom: .35rem; }
+        .pm-title-row { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+        .pm-title { font-size: 1.35rem; font-weight: 800; color: #101828; }
+        .pm-code { font-size: .82rem; color: #667085; margin-top: .2rem; }
+        .badge { display: inline-block; font-size: .72rem; font-weight: 700; padding: .2rem .6rem; border-radius: 999px; white-space: nowrap; }
+        .badge-high { background: #fde2e2; color: #b42318; }
+        .badge-medium { background: #fef3c7; color: #92400e; }
+        .badge-standard { background: #e0e7ff; color: #3538cd; }
 
-        .readiness-note {
-            margin-top: .9rem; padding: .7rem .9rem; border-radius: 6px;
-            font-size: .84rem; line-height: 1.5; border-left: 4px solid #999;
-        }
-        .readiness-note.strong    { background: #ecfdf5; border-left-color: #10b981; color: #065f46; }
-        .readiness-note.solid     { background: #eff6ff; border-left-color: #3b82f6; color: #1e40af; }
-        .readiness-note.attention { background: #fffbeb; border-left-color: #f59e0b; color: #92400e; }
-        .readiness-note.new       { background: #f5f5f5; border-left-color: #9ca3af; color: #374151; }
-        .readiness-detail { font-size: .8rem; opacity: .9; margin-top: .3rem; }
+        .tagset { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .9rem; }
+        .tag { background: #eef2fb; border: 1px solid #d6def5; color: #274690; font-size: .78rem; padding: .25rem .6rem; border-radius: 999px; }
 
-        .feeds-list { margin: 0 0 0 1.1rem; padding: 0; font-size: .84rem; color: #222; line-height: 1.55; }
-        .feeds-none { font-size: .83rem; color: #777; font-style: italic; }
+        .sec-label { font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #98a2b3; margin: 1.1rem 0 .35rem; }
+        .rw-text { font-size: .88rem; color: #344054; line-height: 1.55; }
 
-        @media (max-width: 640px) {
-            .stat-row { flex-direction: column; }
-            .sub-tab { padding: .6rem .9rem; font-size: .82rem; }
+        .build-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: .9rem 1.1rem; margin-top: 1rem; }
+        .build-box .sec-label { color: #92722a; margin-top: 0; }
+        .build-box .txt { font-size: .86rem; color: #6b5416; line-height: 1.5; }
+
+        .two-col { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
+        .roles-box, .demand-box { flex: 1 1 240px; border: 1px solid #e6e8ec; border-radius: 10px; padding: .8rem 1rem; }
+        .role-pill { display: inline-block; font-size: .76rem; font-weight: 600; padding: .25rem .6rem; border-radius: 8px; background: #eef1f4; color: #475467; margin: .2rem .2rem 0 0; }
+        .role-pill.lead { background: #16213f; color: #fff; }
+        .demand-bar { height: 8px; border-radius: 999px; background: #eef1f4; overflow: hidden; margin: .5rem 0 .35rem; }
+        .demand-fill { height: 100%; background: linear-gradient(90deg,#d9a520,#c9a227); border-radius: 999px; }
+        .demand-lvl { font-size: .85rem; font-weight: 700; color: #101828; }
+
+        .insight-box { border-left: 4px solid #16213f; background: #f7f8fb; border-radius: 8px; padding: .9rem 1.1rem; margin-top: 1.1rem; }
+        .insight-head { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .5rem; }
+        .insight-head .sec-label { margin: 0; }
+        .gen-btn { background: #16213f; color: #fff; border: none; border-radius: 999px; padding: .4rem .9rem; font-size: .78rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .gen-btn:hover { background: #0c1730; }
+        .gen-btn:disabled { opacity: .6; cursor: not-allowed; }
+        .insight-text { font-size: .86rem; color: #344054; line-height: 1.55; }
+        .insight-text.err { color: #b42318; }
+
+        .mp-intro { color: #475467; font-size: .92rem; margin-bottom: 1.2rem; }
+        .mod-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.1rem; }
+        .mod-card { background: #fff; border: 1px solid #e6e8ec; border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.05); padding: 1.1rem 1.3rem; }
+        .mod-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .6rem; }
+        .mod-card-title { font-size: 1rem; font-weight: 700; color: #101828; }
+        .mod-card-code { font-size: .8rem; color: #667085; margin-top: .15rem; }
+
+        .empty { text-align: center; padding: 3rem 1rem; color: #98a2b3; background: #fff; border: 1px solid #e6e8ec; border-radius: 14px; }
+
+        @media (max-width: 820px) {
+            .planner { flex-direction: column; }
+            .pm-sidebar { flex-basis: auto; width: 100%; }
+            .mod-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -805,7 +364,7 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
     <img class="crest" src="images/cu_logo.jpg" alt="Cavendish University crest">
     <div class="header-text">
         <span class="uni-name">Cavendish University</span>
-        <span class="portal-title">Academic Performance and Goal Planning</span>
+        <span class="portal-title">Academic Performance and Career &amp; Module Planning</span>
     </div>
     <div class="header-right"><a class="logout-btn" href="logout.php">Log out</a></div>
 </header>
@@ -813,7 +372,8 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
 <nav class="tab-nav">
     <a class="tab-btn" href="ExamResultInterface.php">Results</a>
     <a class="tab-btn" href="AnalysisResultInterface.php">Analysis</a>
-    <span class="tab-btn active">Career & Module Planner</span>
+    <span class="tab-btn active">Career &amp; Module Planner</span>
+    <a class="tab-btn" href="ModuleRegistration.php">Module Registration</a>
     <a class="tab-btn" href="MyReportsStatus.php">My Reports</a>
 </nav>
 
@@ -824,298 +384,177 @@ $moduleDetails = buildModuleDetails($nextModules, $nextModules);
         <div class="student-sid"><strong>SID:</strong><?= htmlspecialchars($student["student_ID"]) ?></div>
     </div>
 
-    <?php
-        // After a career submission, open the Career Planner tab so the
-        // student lands directly on their recommendations.
-        $activePanel = $hasSubmitted ? 'career' : 'module';
-    ?>
+    <?php $activePanel = !empty($selectedCareers) ? 'career' : 'module'; ?>
     <div class="sub-tabs">
-        <button type="button" class="sub-tab <?= $activePanel === 'module' ? 'active' : '' ?>" data-panel="module">
-            📚 Module Planner
-        </button>
-        <button type="button" class="sub-tab <?= $activePanel === 'career' ? 'active' : '' ?>" data-panel="career">
-            🎯 Career Planner
-        </button>
+        <button type="button" class="sub-tab <?= $activePanel === 'module' ? 'active' : '' ?>" data-panel="module">📚 Module Planner</button>
+        <button type="button" class="sub-tab <?= $activePanel === 'career' ? 'active' : '' ?>" data-panel="career">🎯 Career Planner</button>
     </div>
 
     <!-- ══════════ MODULE PLANNER TAB ══════════ -->
     <div class="tab-panel <?= $activePanel === 'module' ? 'active' : '' ?>" data-panel="module">
-
-    <!-- ── Always-visible: upcoming semester's module details ── -->
-    <div class="card">
-        <div class="card-header">
-            Your Upcoming Modules — Year <?= $nextYear ?>, Sem <?= $nextSem ?>
-            <span class="card-sub">Credit units, key concepts, and where each one leads</span>
-        </div>
-        <div class="card-body">
-            <?php if (empty($moduleDetails)): ?>
-                <p class="empty">No module list found for Year <?= $nextYear ?>, Sem <?= $nextSem ?> under your program. Check that <code>module_tb</code> has entries for this program/year/semester.</p>
-            <?php else: ?>
-                <div class="upcoming-grid">
-                    <?php foreach ($moduleDetails as $md): ?>
-                    <div class="upcoming-card">
-                        <div class="upcoming-card-head">
-                            <div>
-                                <div class="upcoming-title"><?= htmlspecialchars($md["module_name"]) ?></div>
-                                <div class="upcoming-code"><?= htmlspecialchars($md["module_code"]) ?></div>
-                            </div>
-                            <span class="cu-pill"><?= htmlspecialchars($md["credit_unit"]) ?> credit units</span>
-                        </div>
-
-                        <div class="cgpa-note">📊 <?= htmlspecialchars($md["cgpa_note"]) ?></div>
-
-                        <div class="upcoming-section">
-                            <div class="upcoming-label">Key Concepts &amp; Terms</div>
-                            <div class="role-tags">
-                                <?php foreach ($md["key_concepts"] as $concept): ?>
-                                <span class="role-tag"><?= htmlspecialchars($concept) ?></span>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-
-                        <div class="upcoming-section">
-                            <div class="upcoming-label">Industry Relevance &amp; Real-Life Application</div>
-                            <div class="upcoming-text"><?= htmlspecialchars($md["real_world_use"]) ?></div>
-                        </div>
-
-                        <div class="upcoming-section">
-                            <div class="upcoming-label">Career Prospects</div>
-                            <div class="role-tags">
-                                <?php foreach ($md["career_roles"] as $role): ?>
-                                <span class="role-tag"><?= htmlspecialchars($role) ?></span>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
+        <p class="mp-intro">Your registered modules for <strong>Year <?= $nextYear ?>, Semester <?= $nextSem ?></strong> — open the Career Planner to see how each one builds toward a role.</p>
+        <?php if (empty($dossier)): ?>
+            <p class="empty">No module list found for Year <?= $nextYear ?>, Sem <?= $nextSem ?> under your program.</p>
+        <?php else: ?>
+        <div class="mod-grid">
+            <?php foreach ($dossier as $d): ?>
+            <div class="mod-card">
+                <div class="mod-card-head">
+                    <div>
+                        <div class="mod-card-title"><?= htmlspecialchars($d["name"]) ?></div>
+                        <div class="mod-card-code"><?= htmlspecialchars($d["code"]) ?> · <?= $cuFmt($d["cu"]) ?> credits</div>
                     </div>
-                    <?php endforeach; ?>
+                    <span class="badge badge-<?= $d["priority"] ?>"><?= priorityLabel($d["priority"]) ?></span>
                 </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <?php if (!$hasResults): ?>
-        <p class="empty">No past results found yet — goal planning works best once you have at least one semester recorded.</p>
-    <?php endif; ?>
-
-    <?php if ($hasResults): ?>
-    <div class="card">
-        <div class="card-header">
-            Your Performance So Far
-            <span class="card-sub">Based on results through Year <?= $latestYear ?>, Sem <?= $latestSemDisplay ?></span>
-        </div>
-        <div class="card-body">
-            <div class="stat-row">
-                <div class="stat-box">
-                    <div class="label">Average Grade Point</div>
-                    <div class="value"><?= $performanceSummary["overall_avg_gp"] ?? '—' ?></div>
+                <div class="sec-label">Key Concepts &amp; Technologies</div>
+                <div class="tagset">
+                    <?php foreach ($d["concepts"] as $c): ?><span class="tag"><?= htmlspecialchars($c) ?></span><?php endforeach; ?>
                 </div>
-                <div class="stat-box">
-                    <div class="label">Strongest Modules</div>
-                    <ul class="mini-list">
-                        <?php foreach ($performanceSummary["strongest"] as $s): ?>
-                        <li>✅ <?= htmlspecialchars($s["module_name"]) ?> (<?= htmlspecialchars($s["letter_grade"]) ?>)</li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-                <div class="stat-box">
-                    <div class="label">Modules to Strengthen</div>
-                    <ul class="mini-list">
-                        <?php foreach ($performanceSummary["weakest"] as $w): ?>
-                        <li>⚠️ <?= htmlspecialchars($w["module_name"]) ?> (<?= htmlspecialchars($w["letter_grade"]) ?>)</li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
+                <div class="sec-label">Real-World Application</div>
+                <div class="rw-text"><?= htmlspecialchars($d["real_world"]) ?></div>
             </div>
+            <?php endforeach; ?>
         </div>
+        <?php endif; ?>
     </div>
-    <?php endif; ?>
-
-    </div><!-- /.tab-panel[module] -->
 
     <!-- ══════════ CAREER PLANNER TAB ══════════ -->
     <div class="tab-panel <?= $activePanel === 'career' ? 'active' : '' ?>" data-panel="career">
 
-    <div class="card">
-        <div class="card-header">
-            Choose Your Career Interests
-            <span class="card-sub">Select one or more — we'll show you the overlap with your upcoming modules</span>
-        </div>
-        <div class="card-body">
-            <form method="POST" action="GoalPlanning.php">
-                <div class="career-grid">
-                    <?php foreach ($careerOptions as $name => $desc): ?>
-                    <label class="career-option <?= in_array($name, $selectedCareers) ? 'checked' : '' ?>">
-                        <input type="checkbox" name="careers[]" value="<?= htmlspecialchars($name) ?>"
-                               <?= in_array($name, $selectedCareers) ? 'checked' : '' ?>>
-                        <span class="career-title"><?= htmlspecialchars($name) ?></span>
-                        <div class="career-desc"><?= htmlspecialchars($desc) ?></div>
+        <div class="picker">
+            <div class="picker-head">
+                <span class="t">Choose your career interests</span>
+                <span class="s">Select one or more — your dossier updates to match</span>
+            </div>
+            <div class="picker-body">
+                <form method="POST" action="GoalPlanning.php" id="careerForm">
+                    <?php foreach ($careerOptions as $name => $desc): $on = in_array($name, $selectedCareers, true); ?>
+                    <label class="cpill <?= $on ? 'on' : '' ?>">
+                        <input type="checkbox" name="careers[]" value="<?= htmlspecialchars($name) ?>" <?= $on ? 'checked' : '' ?> style="position:absolute;opacity:0;width:0;height:0;">
+                        <?= htmlspecialchars($name) ?>
                     </label>
                     <?php endforeach; ?>
-                </div>
-                <button type="submit" class="btn-submit">Get My Recommendations</button>
-            </form>
-        </div>
-    </div>
-
-    <?php if ($hasSubmitted && !empty($careerInsights)): ?>
-        <div class="card">
-            <div class="card-header">
-                Your Selected Career Paths — In Depth
-                <span class="card-sub">What each path involves, and how your record lines up with it</span>
+                </form>
             </div>
-            <div class="card-body">
-                <?php foreach ($careerInsights as $ins): $p = $ins["profile"]; ?>
-                <div class="insight-card">
-                    <div class="insight-head">
-                        <span class="insight-icon"><?= $p["icon"] ?></span>
-                        <div>
-                            <div class="insight-title"><?= htmlspecialchars($ins["career"]) ?></div>
-                            <div class="insight-summary"><?= htmlspecialchars($p["summary"]) ?></div>
-                            <span class="outlook-badge">📈 <?= htmlspecialchars($p["outlook"]) ?></span>
-                        </div>
+        </div>
+
+        <?php if (empty($dossier)): ?>
+            <p class="empty">No module list found for Year <?= $nextYear ?>, Sem <?= $nextSem ?> under your program.</p>
+        <?php else: ?>
+        <div class="planner">
+            <aside class="pm-sidebar">
+                <div class="pm-side-head">Your Modules <b>Year <?= $nextYear ?> · Semester <?= $nextSem ?></b></div>
+                <?php foreach ($dossier as $i => $d): ?>
+                <button type="button" class="pm-item <?= $i === 0 ? 'active' : '' ?>" data-target="mod-<?= $i ?>">
+                    <span class="pm-name"><span class="dot <?= $d["priority"] ?>"></span><?= htmlspecialchars($d["name"]) ?></span>
+                    <span class="pm-meta"><?= htmlspecialchars($d["code"]) ?> · <?= priorityLabel($d["priority"]) ?></span>
+                </button>
+                <?php endforeach; ?>
+            </aside>
+
+            <div class="pm-detail">
+                <?php foreach ($dossier as $i => $d): ?>
+                <div class="pm-panel <?= $i === 0 ? 'active' : '' ?>" id="mod-<?= $i ?>">
+                    <?php if ($d["matched"]): ?>
+                    <div class="matched-label">Matched to <?= htmlspecialchars($d["matched"]) ?></div>
+                    <?php endif; ?>
+                    <div class="pm-title-row">
+                        <span class="pm-title"><?= htmlspecialchars($d["name"]) ?></span>
+                        <span class="badge badge-<?= $d["priority"] ?>"><?= priorityLabel($d["priority"]) ?></span>
+                    </div>
+                    <div class="pm-code"><?= htmlspecialchars($d["code"]) ?> · <?= $cuFmt($d["cu"]) ?> credits</div>
+
+                    <div class="tagset">
+                        <?php foreach ($d["concepts"] as $c): ?><span class="tag"><?= htmlspecialchars($c) ?></span><?php endforeach; ?>
                     </div>
 
-                    <div class="insight-section">
-                        <div class="insight-label">Typical Roles</div>
-                        <div class="role-tags">
-                            <?php foreach ($p["roles"] as $role): ?>
-                            <span class="role-tag"><?= htmlspecialchars($role) ?></span>
+                    <div class="sec-label">Real-World Application</div>
+                    <div class="rw-text"><?= htmlspecialchars($d["real_world"]) ?></div>
+
+                    <div class="build-box">
+                        <div class="sec-label">Build This Semester</div>
+                        <div class="txt"><?= htmlspecialchars($d["project"]) ?></div>
+                    </div>
+
+                    <div class="two-col">
+                        <div class="roles-box">
+                            <div class="sec-label" style="margin-top:0;">Career Roles This Builds Toward</div>
+                            <?php foreach ($d["roles"] as $ri => $role): ?>
+                            <span class="role-pill <?= $ri === 0 ? 'lead' : '' ?>"><?= htmlspecialchars($role) ?></span>
                             <?php endforeach; ?>
                         </div>
-                    </div>
-
-                    <div class="insight-section">
-                        <div class="insight-label">Core Skills You'll Need</div>
-                        <div class="role-tags">
-                            <?php foreach ($p["skills"] as $skill): ?>
-                            <span class="skill-tag"><?= htmlspecialchars($skill) ?></span>
-                            <?php endforeach; ?>
+                        <div class="demand-box">
+                            <div class="sec-label" style="margin-top:0;">Market Demand</div>
+                            <div class="demand-bar"><div class="demand-fill" style="width:<?= (int)$d["demand_pct"] ?>%;"></div></div>
+                            <div class="demand-lvl"><?= htmlspecialchars($d["demand_lvl"]) ?></div>
                         </div>
                     </div>
 
-                    <div class="insight-section">
-                        <div class="insight-label">Tools &amp; Technologies of the Trade</div>
-                        <div class="role-tags">
-                            <?php foreach ($p["tools"] as $tool): ?>
-                            <span class="tool-tag"><?= htmlspecialchars($tool) ?></span>
-                            <?php endforeach; ?>
+                    <div class="insight-box">
+                        <div class="insight-head">
+                            <span class="sec-label">Personalised Insight</span>
+                            <button type="button" class="gen-btn"
+                                    data-code="<?= htmlspecialchars($d["code"]) ?>"
+                                    data-name="<?= htmlspecialchars($d["name"]) ?>">✦ Generate with Claude</button>
                         </div>
-                    </div>
-
-                    <div class="insight-section">
-                        <div class="insight-label">Where People Work</div>
-                        <div class="insight-industries"><?= htmlspecialchars(implode(" · ", $p["industries"])) ?></div>
-                    </div>
-
-                    <div class="insight-section">
-                        <div class="insight-label">How Your Upcoming Semester Feeds This Path</div>
-                        <?php if (!empty($ins["relevant_upcoming"])): ?>
-                        <ul class="feeds-list">
-                            <?php foreach ($ins["relevant_upcoming"] as $rm): ?>
-                            <li><?= htmlspecialchars($rm) ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                        <?php else: ?>
-                        <div class="feeds-none">None of next semester's modules map directly to this path — it builds more on later-year or elective modules.</div>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="readiness-note <?= $ins["ready_level"] ?>">
-                        <?= htmlspecialchars($ins["readiness"]) ?>
-                        <?php if ($ins["best_past"] || $ins["worst_past"]): ?>
-                        <div class="readiness-detail">
-                            <?php if ($ins["best_past"]): ?>
-                            Strongest so far: <strong><?= htmlspecialchars($ins["best_past"]["module_name"]) ?></strong> (<?= htmlspecialchars($ins["best_past"]["letter_grade"]) ?>)<?php endif; ?>
-                            <?php if ($ins["worst_past"] && $ins["worst_past"]["module_code"] !== ($ins["best_past"]["module_code"] ?? null)): ?>
-                            &nbsp;·&nbsp; Needs work: <strong><?= htmlspecialchars($ins["worst_past"]["module_name"]) ?></strong> (<?= htmlspecialchars($ins["worst_past"]["letter_grade"]) ?>)<?php endif; ?>
-                        </div>
-                        <?php endif; ?>
+                        <div class="insight-text"><?= htmlspecialchars($d["insight"]) ?></div>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
         </div>
-    <?php endif; ?>
-
-    <?php if ($hasSubmitted): ?>
-        <div class="card">
-            <div class="card-header">
-                Personalized Priority for Year <?= $nextYear ?>, Sem <?= $nextSem ?>
-                <span class="card-sub">
-                    <?= $apiFailed ? 'API call failed' : 'AI-generated by Claude' ?> &middot; which modules matter most for <?= htmlspecialchars(implode(', ', $selectedCareers)) ?>
-                </span>
-            </div>
-            <div class="card-body">
-
-                <?php if ($apiFailed): ?>
-                    <div class="api-error-banner">
-                        <strong>&#9888; Anthropic API error — no recommendations generated</strong>
-                        <?= htmlspecialchars($apiErrorMsg) ?>
-                    </div>
-                <?php elseif (empty($nextModules)): ?>
-                    <p class="empty">No module list found for Year <?= $nextYear ?>, Sem <?= $nextSem ?> under your program. Check that <code>module_tb</code> has entries for this program/year/semester.</p>
-                <?php elseif (empty($recommendations)): ?>
-                    <p class="empty">Couldn't generate recommendations right now. Please try again.</p>
-                <?php else: ?>
-                    <div class="api-ok-banner">&#10003; Recommendations generated live by the Anthropic API.</div>
-                    <?php foreach ($recommendations as $rec): ?>
-                    <div class="module-rec">
-                        <div class="module-rec-head">
-                            <div>
-                                <div class="module-rec-title"><?= htmlspecialchars($rec["module_name"] ?? $rec["module_code"]) ?></div>
-                                <div class="module-rec-code"><?= htmlspecialchars($rec["module_code"]) ?></div>
-                                <?php if (isset($rec["credit_unit"])): ?>
-                                <div class="module-rec-cu"><?= htmlspecialchars($rec["credit_unit"]) ?> credit units</div>
-                                <?php endif; ?>
-                            </div>
-                            <span class="badge <?= priorityClass($rec["priority"] ?? 'standard') ?>">
-                                <?= ucfirst($rec["priority"] ?? 'standard') ?> priority
-                            </span>
-                        </div>
-
-                        <?php if (!empty($rec["key_concepts"])): ?>
-                        <div class="rec-section">
-                            <div class="rec-label">Key Concepts &amp; Technologies</div>
-                            <div class="concept-tags">
-                                <?php foreach ((array)$rec["key_concepts"] as $concept): ?>
-                                <span class="concept-tag"><?= htmlspecialchars($concept) ?></span>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                        <?php endif; ?>
-
-                        <?php if (!empty($rec["real_world_use"])): ?>
-                        <div class="rec-section">
-                            <div class="rec-label">Real-World Application</div>
-                            <div class="rec-text"><?= htmlspecialchars($rec["real_world_use"]) ?></div>
-                        </div>
-                        <?php endif; ?>
-
-                        <?php if (!empty($rec["rationale"])): ?>
-                        <div class="rationale">💡 <?= htmlspecialchars($rec["rationale"]) ?></div>
-                        <?php endif; ?>
-                    </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-
-            </div>
-        </div>
-    <?php endif; ?>
-
-    </div><!-- /.tab-panel[career] -->
+        <?php endif; ?>
+    </div>
 
 </main>
 
 <script>
     document.querySelectorAll('.sub-tab').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            var target = btn.dataset.panel;
-            document.querySelectorAll('.sub-tab').forEach(function (b) {
-                b.classList.toggle('active', b.dataset.panel === target);
-            });
-            document.querySelectorAll('.tab-panel').forEach(function (p) {
-                p.classList.toggle('active', p.dataset.panel === target);
-            });
+            var t = btn.dataset.panel;
+            document.querySelectorAll('.sub-tab').forEach(b => b.classList.toggle('active', b.dataset.panel === t));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === t));
+        });
+    });
+
+    document.querySelectorAll('#careerForm .cpill input').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            cb.closest('.cpill').classList.toggle('on', cb.checked);
+            document.getElementById('careerForm').submit();
+        });
+    });
+
+    document.querySelectorAll('.pm-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            var target = item.dataset.target;
+            document.querySelectorAll('.pm-item').forEach(i => i.classList.toggle('active', i === item));
+            document.querySelectorAll('.pm-panel').forEach(p => p.classList.toggle('active', p.id === target));
+        });
+    });
+
+    const careers = <?= json_encode($selectedCareers) ?>;
+    const dossierMap = <?= json_encode($insightData) ?>;
+    document.querySelectorAll('.gen-btn').forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+            const box = btn.closest('.insight-box').querySelector('.insight-text');
+            const original = btn.textContent;
+            btn.disabled = true; btn.textContent = 'Generating…';
+            box.classList.remove('err');
+            try {
+                const extra = dossierMap[btn.dataset.code] || {};
+                const res = await fetch('GoalInsight.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(Object.assign({ module_code: btn.dataset.code, module_name: btn.dataset.name, careers: careers }, extra))
+                });
+                const data = await res.json();
+                if (data.success) { box.textContent = data.insight; }
+                else { box.textContent = data.error || 'Could not generate an insight right now.'; box.classList.add('err'); }
+            } catch (e) {
+                box.textContent = 'Could not reach the server. Please try again.'; box.classList.add('err');
+            } finally {
+                btn.disabled = false; btn.textContent = original;
+            }
         });
     });
 </script>
