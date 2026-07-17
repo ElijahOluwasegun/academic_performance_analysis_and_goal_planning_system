@@ -40,7 +40,10 @@ if (!$student) {
     exit();
 }
 
-// ─── Current semester: intake_year + term_mapping_tb + today ─────────────────
+// ─── Current semester = the one AFTER the student's latest completed results ──
+//     Registration follows academic PROGRESS, not the wall-clock calendar: a
+//     student who is behind the calendar still registers for their next real
+//     semester. (term_mapping_tb is used only to label the term for display.)
 $monthToNum = ['JAN' => 1, 'MAY' => 5, 'AUG' => 8];
 $monthNames = [1 => 'January', 5 => 'May', 8 => 'August'];
 
@@ -53,19 +56,26 @@ $stmtTM = $pdo->prepare("
 $stmtTM->execute([$student['intake_session']]);
 $termRows = $stmtTM->fetchAll();
 
+// Latest completed semester (global sem_no 1-6) from the student's recorded results
+$stmtLast = $pdo->prepare("SELECT COALESCE(MAX(sem_no), 0) FROM results_tb WHERE student_ID = ?");
+$stmtLast->execute([$studentID]);
+$latestSem     = (int)$stmtLast->fetchColumn();
+$nextSemGlobal = $latestSem + 1;           // the semester they should register for
+
 $currentYearNo   = null;
 $currentSemNo    = null;
 $currentSemStart = null;
-$today = new DateTime('today');
+$programComplete = ($nextSemGlobal > 6);   // finished all six semesters
 
+// Map that semester to its year + calendar term for the banner label
 foreach ($termRows as $t) {
-    $m        = $monthToNum[$t['term_month']] ?? 1;
-    $calYear  = (int)$student['intake_year'] + (int)$t['year_offset'];
-    $semStart = new DateTime(sprintf('%04d-%02d-01', $calYear, $m));
-    if ($semStart <= $today) {
-        $currentYearNo   = (int)$t['year_no'];
-        $currentSemNo    = (int)$t['sem_no'];
+    if ((int)$t['sem_no'] === $nextSemGlobal) {
+        $currentYearNo = (int)$t['year_no'];
+        $currentSemNo  = (int)$t['sem_no'];
+        $m       = $monthToNum[$t['term_month']] ?? 1;
+        $calYear = (int)$student['intake_year'] + (int)$t['year_offset'];
         $currentSemStart = ($monthNames[$m] ?? '') . ' ' . $calYear;
+        break;
     }
 }
 
@@ -400,6 +410,11 @@ function gradeLabel(?string $g): string {
                 &nbsp;·&nbsp; Intake: <?= htmlspecialchars($student['intake_session']) ?> <?= $student['intake_year'] ?>
             </div>
         </div>
+    </div>
+    <?php elseif ($programComplete): ?>
+    <div class="no-sem-card">
+        <strong>&#127891; You've completed all six semesters of your programme.</strong><br>
+        There are no further modules to register — congratulations!
     </div>
     <?php else: ?>
     <div class="no-sem-card">
