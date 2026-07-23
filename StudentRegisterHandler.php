@@ -97,10 +97,6 @@ if ($stmt->fetch()) {
 }
 
 // ─── Insert student ──────────────────────────────────────────────────────────
-// student_password is varchar(20) — stored as plain text to match the existing
-// login check (ExamResultInterface.php uses !== string comparison).
-// Truncate to 20 chars to avoid a DB error; the user will log in with whatever
-// they typed (matching characters up to the 20-char limit).
 $passwordStore = password_hash($password, PASSWORD_BCRYPT);
 
 $ins = $pdo->prepare("

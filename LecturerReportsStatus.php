@@ -5,8 +5,8 @@ session_start();
 $db_host = "127.0.0.1";
 $db_port = "3306";
 $db_name = "apaagps_db";
-$db_user = "root";   // ← change if needed
-$db_pass = "";       // ← change if needed
+$db_user = "root";   
+$db_pass = "";       
 
 // ─── Auth: relies on the session set at lecturer login ───────────────────────
 if (empty($_SESSION["lecturer_ID"])) {

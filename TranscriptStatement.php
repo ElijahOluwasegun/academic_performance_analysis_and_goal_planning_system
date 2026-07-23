@@ -113,7 +113,7 @@ if ($lastKey !== null) {
     $finalCgpa = $cgpaMap[$lastKey] ?? 0.0;
 }
 
-// ─── Class of award from final CGPA (Ugandan honours classification) ──────────
+// ─── Class of award from final CGPA (unofficial classification) ──────────
 function classOfAward(float $cgpa): string {
     return match(true) {
         $cgpa >= 4.40 => "First Class Honours",

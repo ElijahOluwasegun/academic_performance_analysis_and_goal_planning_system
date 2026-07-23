@@ -11,8 +11,8 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST" && empty($_SESSION["student_ID"])) {
 $db_host = "127.0.0.1";
 $db_port = "3306";
 $db_name = "apaagps_db";
-$db_user = "root";   // ← change if needed
-$db_pass = "";       // ← change if needed
+$db_user = "root";   
+$db_pass = "";       
 
 // ─── Require an active session (this page is reached via the navbar, not a login form) ──
 if (empty($_SESSION["student_ID"])) {

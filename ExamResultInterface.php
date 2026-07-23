@@ -5,8 +5,8 @@ session_start();
 $db_host = "127.0.0.1";
 $db_port = "3306";
 $db_name = "apaagps_db";
-$db_user = "root";   // ← change if needed
-$db_pass = "";       // ← change if needed
+$db_user = "root";   
+$db_pass = "";       
 
 // ─── POST = login attempt → authenticate, set session, redirect (PRG) ─────────
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -48,8 +48,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $_SESSION["student_ID"]   = $authStudent["student_ID"];
     $_SESSION["student_name"] = $authStudent["student_name"];
 
-    // PRG: redirect to GET so the Results tab works as a normal link from any
-    // other page, and the back button never triggers a resubmission warning.
+    
     header("Location: ExamResultInterface.php");
     exit();
 }

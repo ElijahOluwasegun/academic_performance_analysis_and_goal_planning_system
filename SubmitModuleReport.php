@@ -6,8 +6,8 @@ header('Content-Type: application/json');
 $db_host = "127.0.0.1";
 $db_port = "3306";
 $db_name = "apaagps_db";
-$db_user = "root";   // ← change if needed
-$db_pass = "";       // ← change if needed
+$db_user = "root";   
+$db_pass = "";       
 
 function respond(array $payload, int $httpCode = 200): void {
     http_response_code($httpCode);

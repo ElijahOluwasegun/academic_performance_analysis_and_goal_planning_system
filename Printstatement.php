@@ -5,8 +5,8 @@ session_start();
 $db_host = "127.0.0.1";
 $db_port = "3306";
 $db_name = "apaagps_db";
-$db_user = "root";   // ← change if needed
-$db_pass = "";       // ← change if needed
+$db_user = "root";   
+$db_pass = "";       
 
 // ─── Auth: opened from the Results page, relies on the login session ──────────
 if (empty($_SESSION["student_ID"])) {

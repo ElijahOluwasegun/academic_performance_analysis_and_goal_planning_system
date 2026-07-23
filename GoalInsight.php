@@ -6,7 +6,7 @@ header('Content-Type: application/json');
 // The key lives in config.local.php, which is git-ignored and never pushed to
 // GitHub. Copy config.local.example.php to config.local.php and paste your key
 // there. If the file is missing or the key is blank, the "Generate with Claude"
-// button degrades gracefully (the rule-based insight on the page still shows).
+// button should degrades gracefully (the rule-based insight on the page still shows).
 $localConfig = __DIR__ . '/config.local.php';
 if (is_file($localConfig)) {
     require $localConfig;

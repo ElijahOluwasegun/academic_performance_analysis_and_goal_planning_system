@@ -16,13 +16,11 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 $db_host = "127.0.0.1";
 $db_port = "3306";
 $db_name = "apaagps_db";
-$db_user = "root";   // ← change if needed
-$db_pass = "";       // ← change if needed
+$db_user = "root";   
+$db_pass = "";       
 
 // ════════════════════════════════════════════════════════════════════════
 // AUTH — lecturer must be logged in via lecturer_login.php first.
-// If this page is hit via the login form's POST (Email/Password present),
-// authenticate first and start the session before checking lecturer_ID.
 // ════════════════════════════════════════════════════════════════════════
 if (empty($_SESSION["lecturer_ID"]) && isset($_POST["Email"], $_POST["Password"]) && !isset($_POST["result_file"]) && !isset($_FILES["result_file"])) {
     // This branch handles the initial login POST from lecturer_login.php
@@ -281,7 +279,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_FILES["result_file"])) {
 
                 // GPA and CGPA are now recalculated automatically by the
                 // trg_results_after_insert / trg_results_after_update triggers
-                // on results_tb (added in gpa_cgpa_automation_migration.sql).
+                // on results_tb 
                 // No manual CALL needed here.
             }
 

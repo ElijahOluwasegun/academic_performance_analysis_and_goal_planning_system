@@ -10,7 +10,7 @@
 //    3. config.local.php is listed in .gitignore, so it is never pushed to GitHub.
 //
 //  If config.local.php is missing or the key is blank, the "Generate with Claude"
-//  button degrades gracefully and the rule-based insight on the page still shows.
+//  button should degrades gracefully and the rule-based insight on the page still shows.
 // ─────────────────────────────────────────────────────────────────────────────
 
 define('ANTHROPIC_API_KEY', '');
