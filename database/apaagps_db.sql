@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Jul 16, 2026 at 11:45 AM
+-- Generation Time: Jul 21, 2026 at 08:23 AM
 -- Server version: 8.4.7
 -- PHP Version: 8.4.15
 
@@ -25,6 +25,32 @@ DELIMITER $$
 --
 -- Procedures
 --
+DROP PROCEDURE IF EXISTS `gen_load_test_data`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `gen_load_test_data` ()   BEGIN
+    DECLARE s INT DEFAULT 1;
+    DECLARE sid VARCHAR(10);
+    WHILE s <= 400 DO
+        SET sid = CONCAT('LT', LPAD(s, 6, '0'));
+        INSERT INTO student_tb (student_ID, student_name, student_email,
+                                student_password, program_code,
+                                intake_year, intake_session)
+        VALUES (sid, CONCAT('Load Test ', s),
+                CONCAT('lt', s, '@test.local'),
+                'x', 'BIT', 2024, 'JAN');
+
+        -- one result row per existing module, random mark
+        INSERT INTO results_tb (student_ID, module_code, year_no, sem_no,
+                                cat1_mk, cat2_mk, exam_mk, final_total,
+                                status_retake_pass)
+        SELECT sid, m.module_code, m.year_no, m.sem_no,
+               FLOOR(10 + RAND()*20), FLOOR(10 + RAND()*20),
+               FLOOR(30 + RAND()*30), FLOOR(45 + RAND()*50), 'Pass'
+        FROM module_tb m;
+
+        SET s = s + 1;
+    END WHILE;
+END$$
+
 DROP PROCEDURE IF EXISTS `sp_recalc_cgpa`$$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_recalc_cgpa` (IN `p_student_id` VARCHAR(10), IN `p_sem_no` INT, IN `p_year_no` INT)   BEGIN
     DECLARE v_total_cu DECIMAL(8,2) DEFAULT 0;
@@ -185,7 +211,7 @@ CREATE TABLE IF NOT EXISTS `cgpa_tb` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_cgpa_student_sem_year` (`student_ID`,`sem_no`,`year_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=160 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=241 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `cgpa_tb`
@@ -205,20 +231,35 @@ INSERT INTO `cgpa_tb` (`ID`, `student_ID`, `sem_no`, `year_no`, `total_quality_p
 (52, '200-002', 1, 1, 74.50, 17.00, 4.3824),
 (57, '200-002', 2, 1, 177.00, 42.00, 4.2143),
 (64, '200-002', 3, 2, 269.00, 64.00, 4.2031),
-(70, '200-002', 4, 2, 357.50, 84.00, 4.2560),
+(70, '200-002', 4, 2, 356.00, 84.00, 4.2381),
 (76, '200-003', 1, 1, 83.00, 17.00, 4.8824),
 (81, '200-003', 2, 1, 206.50, 42.00, 4.9167),
 (88, '200-003', 3, 2, 313.00, 64.00, 4.8906),
-(94, '200-003', 4, 2, 408.50, 84.00, 4.8631),
-(100, '200-003', 5, 3, 500.00, 103.00, 4.8544),
-(105, '200-003', 6, 3, 608.50, 125.00, 4.8680),
+(94, '200-003', 4, 2, 405.50, 84.00, 4.8274),
+(100, '200-003', 5, 3, 497.00, 103.00, 4.8252),
+(105, '200-003', 6, 3, 605.50, 125.00, 4.8440),
 (115, '432-903', 1, 1, 70.50, 17.00, 4.1471),
 (120, '432-903', 2, 1, 157.00, 38.00, 4.1316),
 (126, '432-903', 3, 2, 243.00, 60.00, 4.0500),
-(132, '200-002', 5, 3, 428.00, 103.00, 4.1553),
+(132, '200-002', 5, 3, 426.50, 103.00, 4.1408),
 (137, '200-001', 3, 2, 247.50, 64.00, 3.8672),
-(143, '200-001', 6, 3, 321.50, 82.00, 3.9207),
-(148, '200-002', 6, 3, 502.00, 121.00, 4.1488);
+(143, '200-001', 6, 3, 336.50, 85.00, 3.9588),
+(148, '200-002', 6, 3, 500.50, 121.00, 4.1364),
+(160, '300-001', 1, 1, 69.00, 17.00, 4.0588),
+(165, '300-001', 2, 1, 177.50, 42.00, 4.2262),
+(172, '300-002', 1, 1, 69.00, 17.00, 4.0588),
+(177, '300-002', 2, 1, 177.50, 42.00, 4.2262),
+(184, '300-002', 3, 2, 266.00, 64.00, 4.1563),
+(190, '300-002', 4, 2, 354.00, 84.00, 4.2143),
+(196, '300-003', 1, 1, 69.00, 17.00, 4.0588),
+(201, '300-003', 2, 1, 177.50, 42.00, 4.2262),
+(208, '300-003', 3, 2, 266.00, 64.00, 4.1563),
+(214, '300-003', 4, 2, 354.00, 84.00, 4.2143),
+(220, '300-003', 5, 3, 431.00, 103.00, 4.1845),
+(225, '300-003', 6, 3, 528.00, 125.00, 4.2240),
+(237, '200-001', 4, 2, 262.50, 67.00, 3.9179),
+(239, '100-001', 4, 2, 66.50, 20.00, 3.3250),
+(240, '432-903', 4, 2, 258.00, 63.00, 4.0952);
 
 -- --------------------------------------------------------
 
@@ -258,7 +299,7 @@ CREATE TABLE IF NOT EXISTS `gpa_tb` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uq_gpa_student_sem` (`student_ID`,`sem_no`),
   KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=130 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=206 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `gpa_tb`
@@ -277,11 +318,11 @@ INSERT INTO `gpa_tb` (`ID`, `student_ID`, `total_quality_points`, `total_credit_
 (27, '200-002', 74.50, 17.00, 4.3824, 1),
 (32, '200-002', 102.50, 25.00, 4.1000, 2),
 (39, '200-002', 92.00, 22.00, 4.1818, 3),
-(45, '200-002', 88.50, 20.00, 4.4250, 4),
+(45, '200-002', 87.00, 20.00, 4.3500, 4),
 (51, '200-003', 83.00, 17.00, 4.8824, 1),
 (56, '200-003', 123.50, 25.00, 4.9400, 2),
 (63, '200-003', 106.50, 22.00, 4.8409, 3),
-(69, '200-003', 95.50, 20.00, 4.7750, 4),
+(69, '200-003', 92.50, 20.00, 4.6250, 4),
 (75, '200-003', 91.50, 19.00, 4.8158, 5),
 (80, '200-003', 108.50, 22.00, 4.9318, 6),
 (90, '432-903', 70.50, 17.00, 4.1471, 1),
@@ -290,7 +331,22 @@ INSERT INTO `gpa_tb` (`ID`, `student_ID`, `total_quality_points`, `total_credit_
 (107, '200-002', 70.50, 19.00, 3.7105, 5),
 (112, '200-001', 86.00, 22.00, 3.9091, 3),
 (118, '200-001', 74.00, 18.00, 4.1111, 6),
-(123, '200-002', 74.00, 18.00, 4.1111, 6);
+(123, '200-002', 74.00, 18.00, 4.1111, 6),
+(130, '300-001', 69.00, 17.00, 4.0588, 1),
+(135, '300-001', 108.50, 25.00, 4.3400, 2),
+(142, '300-002', 69.00, 17.00, 4.0588, 1),
+(147, '300-002', 108.50, 25.00, 4.3400, 2),
+(154, '300-002', 88.50, 22.00, 4.0227, 3),
+(160, '300-002', 88.00, 20.00, 4.4000, 4),
+(166, '300-003', 69.00, 17.00, 4.0588, 1),
+(171, '300-003', 108.50, 25.00, 4.3400, 2),
+(178, '300-003', 88.50, 22.00, 4.0227, 3),
+(184, '300-003', 88.00, 20.00, 4.4000, 4),
+(190, '300-003', 77.00, 19.00, 4.0526, 5),
+(195, '300-003', 97.00, 22.00, 4.4091, 6),
+(203, '200-001', 15.00, 3.00, 5.0000, 4),
+(204, '100-001', 9.00, 3.00, 3.0000, 4),
+(205, '432-903', 15.00, 3.00, 5.0000, 4);
 
 -- --------------------------------------------------------
 
@@ -341,7 +397,7 @@ CREATE TABLE IF NOT EXISTS `lecturer_module_tb` (
   UNIQUE KEY `uq_lecturer_module` (`lecturer_ID`,`module_code`),
   UNIQUE KEY `uq_module_one_lecturer` (`module_code`),
   KEY `module_code` (`module_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=33 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `lecturer_module_tb`
@@ -349,6 +405,7 @@ CREATE TABLE IF NOT EXISTS `lecturer_module_tb` (
 
 INSERT INTO `lecturer_module_tb` (`ID`, `lecturer_ID`, `module_code`) VALUES
 (9, '183972', 'BIT111'),
+(32, '183972', 'BIT223'),
 (14, '183972', 'BIT315'),
 (15, '183972', 'BIT325'),
 (16, '213910', 'AGM212'),
@@ -438,7 +495,7 @@ CREATE TABLE IF NOT EXISTS `mark_correction_tb` (
   KEY `student_ID` (`student_ID`),
   KEY `module_code` (`module_code`),
   KEY `lecturer_ID` (`lecturer_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `mark_correction_tb`
@@ -446,7 +503,8 @@ CREATE TABLE IF NOT EXISTS `mark_correction_tb` (
 
 INSERT INTO `mark_correction_tb` (`correction_ID`, `report_ID`, `student_ID`, `module_code`, `lecturer_ID`, `category`, `old_component`, `new_component`, `old_total`, `new_total`, `new_grade_point`, `new_letter_grade`, `status`, `lecturer_note`, `admin_note`, `created_at`, `reviewed_at`) VALUES
 (2, 4, '200-002', 'BJC110', '783482', NULL, NULL, NULL, 81, 90, 5.00, 'A', 'Approved', NULL, NULL, '2026-07-16 07:33:20', '2026-07-16 07:34:27'),
-(4, 5, '200-002', 'BBA116', '932023', 'CAT2', 13, 18, 63, 68, 3.50, 'C+', 'Approved', NULL, NULL, '2026-07-16 08:29:18', '2026-07-16 08:29:47');
+(4, 5, '200-002', 'BBA116', '932023', 'CAT2', 13, 18, 63, 68, 3.50, 'C+', 'Approved', NULL, NULL, '2026-07-16 08:29:18', '2026-07-16 08:29:47'),
+(5, 6, '432-903', 'BIT223', '183972', 'Exam', 48, 55, 85, 92, 5.00, 'A', 'Approved', 'I\'ve checked your script - and the mark has been updated with the duplicate question taken into consideration', 'none', '2026-07-21 06:44:19', '2026-07-21 06:47:09');
 
 -- --------------------------------------------------------
 
@@ -510,7 +568,7 @@ CREATE TABLE IF NOT EXISTS `module_report_tb` (
   KEY `student_ID` (`student_ID`),
   KEY `module_code` (`module_code`),
   KEY `lecturer_ID` (`lecturer_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `module_report_tb`
@@ -521,7 +579,8 @@ INSERT INTO `module_report_tb` (`report_ID`, `student_ID`, `module_code`, `lectu
 (2, '100-001', 'BIT113', 'LEC0329', 'CAT1', 'My CAT1 mark is different from the sheet you sent in the group', 'Resolved', NULL, '2026-07-02 06:43:26', '2026-07-02 06:52:51'),
 (3, '200-002', 'BIT225', NULL, 'Exam', 'Exam Mark is too low', 'Submitted', NULL, '2026-07-15 11:40:45', '2026-07-15 11:40:45'),
 (4, '200-002', 'BJC110', '783482', 'Exam', 'Test', 'Resolved', NULL, '2026-07-15 11:42:56', '2026-07-16 07:34:27'),
-(5, '200-002', 'BBA116', '932023', 'CAT2', 'CAT2 lower than what was reported on the Whatsapp group chat', 'Resolved', NULL, '2026-07-16 08:27:42', '2026-07-16 08:30:08');
+(5, '200-002', 'BBA116', '932023', 'CAT2', 'CAT2 lower than what was reported on the Whatsapp group chat', 'Resolved', NULL, '2026-07-16 08:27:42', '2026-07-16 08:30:08'),
+(6, '432-903', 'BIT223', '183972', 'Exam', 'Testing feature', 'Resolved', 'I\'ve checked your script - and the mark has been updated with the duplicate question taken into consideration', '2026-07-21 06:40:50', '2026-07-21 06:44:18');
 
 -- --------------------------------------------------------
 
@@ -660,7 +719,7 @@ CREATE TABLE IF NOT EXISTS `results_tb` (
   KEY `student_ID` (`student_ID`),
   KEY `letter_grade` (`letter_grade`),
   KEY `grade_point_2` (`grade_point`)
-) ENGINE=InnoDB AUTO_INCREMENT=174 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=252 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `results_tb`
@@ -686,7 +745,7 @@ INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`
 (17, 'BIT215', '100-000', 2, 3, 16, 17, 40, 4.00, 'B', 73, 'Pass', '2026-06-17 08:58:31'),
 (18, 'COM211', '100-000', 2, 3, 16, 17, 40, 4.00, 'B', 73, 'Pass', '2026-06-17 08:58:31'),
 (19, 'BIT222', '100-000', 2, 4, 13, 14, 37, 3.00, 'C', 64, 'Pass', '2026-06-17 08:58:32'),
-(20, 'BIT223', '100-000', 2, 4, 17, 18, 46, 5.00, 'A', 81, 'Pass', '2026-06-17 08:58:32'),
+(20, 'BIT223', '100-000', 2, 4, 18, 19, 49, 5.00, 'A', 86, 'Pass', '2026-06-17 08:58:32'),
 (21, 'BIT225', '100-000', 2, 4, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-06-17 08:58:32'),
 (22, 'COM221', '100-000', 2, 4, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-06-17 08:58:33'),
 (23, 'COM224', '100-000', 2, 4, 14, 16, 38, 3.50, 'C+', 68, 'Pass', '2026-06-17 08:58:33'),
@@ -737,7 +796,7 @@ INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`
 (69, 'BIT215', '200-002', 2, 3, 13, 14, 33, 3.00, 'C', 60, 'Pass', '2026-06-30 07:00:00'),
 (70, 'COM211', '200-002', 2, 3, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-06-30 07:00:00'),
 (71, 'BIT222', '200-002', 2, 4, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-06-30 07:00:00'),
-(72, 'BIT223', '200-002', 2, 4, 17, 18, 48, 5.00, 'A', 83, 'Pass', '2026-06-30 07:00:00'),
+(72, 'BIT223', '200-002', 2, 4, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-06-30 07:00:00'),
 (73, 'BIT225', '200-002', 2, 4, 14, 15, 40, 3.50, 'C+', 69, 'Pass', '2026-06-30 07:00:00'),
 (74, 'COM221', '200-002', 2, 4, 18, 17, 48, 5.00, 'A', 83, 'Pass', '2026-06-30 07:00:00'),
 (75, 'COM224', '200-002', 2, 4, 16, 15, 41, 4.00, 'B', 72, 'Pass', '2026-06-30 07:00:00'),
@@ -761,7 +820,7 @@ INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`
 (93, 'BIT215', '200-003', 2, 3, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-06-30 07:00:00'),
 (94, 'COM211', '200-003', 2, 3, 18, 19, 50, 5.00, 'A', 87, 'Pass', '2026-06-30 07:00:00'),
 (95, 'BIT222', '200-003', 2, 4, 17, 18, 46, 5.00, 'A', 81, 'Pass', '2026-06-30 07:00:00'),
-(96, 'BIT223', '200-003', 2, 4, 16, 17, 43, 4.50, 'B+', 76, 'Pass', '2026-06-30 07:00:00'),
+(96, 'BIT223', '200-003', 2, 4, 15, 14, 38, 3.50, 'C+', 67, 'Pass', '2026-06-30 07:00:00'),
 (97, 'BIT225', '200-003', 2, 4, 18, 19, 50, 5.00, 'A', 87, 'Pass', '2026-06-30 07:00:00'),
 (98, 'COM221', '200-003', 2, 4, 17, 18, 47, 5.00, 'A', 82, 'Pass', '2026-06-30 07:00:00'),
 (99, 'COM224', '200-003', 2, 4, 15, 16, 43, 4.00, 'B', 74, 'Pass', '2026-06-30 07:00:00'),
@@ -815,7 +874,81 @@ INSERT INTO `results_tb` (`ID`, `module_code`, `student_ID`, `year_no`, `sem_no`
 (170, 'BIT325', '200-002', 3, 6, 15, 17, 45, 4.50, 'B+', 77, 'Pass', '2026-07-16 07:13:26'),
 (171, 'BIT322', '200-002', 3, 6, 14, 16, 36, 3.50, 'C+', 66, 'Pass', '2026-07-16 07:13:26'),
 (172, 'BIT324', '200-002', 3, 6, 18, 17, 39, 4.00, 'B', 74, 'Pass', '2026-07-16 07:13:26'),
-(173, 'BIT323', '200-002', 3, 6, 13, 19, 41, 4.00, 'B', 73, 'Pass', '2026-07-16 07:13:26');
+(173, 'BIT323', '200-002', 3, 6, 13, 19, 41, 4.00, 'B', 73, 'Pass', '2026-07-16 07:13:26'),
+(174, 'BIT110', '300-001', 1, 1, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-07-10 06:00:00'),
+(175, 'BIT111', '300-001', 1, 1, 18, 18, 48, 5.00, 'A', 84, 'Pass', '2026-07-10 06:00:00'),
+(176, 'BBA116', '300-001', 1, 1, 14, 15, 38, 3.50, 'C+', 67, 'Pass', '2026-07-10 06:00:00'),
+(177, 'BIT113', '300-001', 1, 1, 17, 16, 43, 4.50, 'B+', 76, 'Pass', '2026-07-10 06:00:00'),
+(178, 'BJC110', '300-001', 1, 1, 13, 14, 34, 3.00, 'C', 61, 'Pass', '2026-07-10 06:00:00'),
+(179, 'BIT122', '300-001', 1, 2, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-07-10 06:00:00'),
+(180, 'BIT123', '300-001', 1, 2, 19, 19, 49, 5.00, 'A', 87, 'Pass', '2026-07-10 06:00:00'),
+(181, 'BIT124', '300-001', 1, 2, 16, 15, 40, 4.00, 'B', 71, 'Pass', '2026-07-10 06:00:00'),
+(182, 'BIT125', '300-001', 1, 2, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-07-10 06:00:00'),
+(183, 'BIT126', '300-001', 1, 2, 18, 17, 46, 5.00, 'A', 81, 'Pass', '2026-07-10 06:00:00'),
+(184, 'COM122', '300-001', 1, 2, 15, 14, 36, 3.50, 'C+', 65, 'Pass', '2026-07-10 06:00:00'),
+(185, 'FST121', '300-001', 1, 2, 0, 0, 82, 5.00, 'A', 82, 'Pass', '2026-07-10 06:00:00'),
+(186, 'BIT110', '300-002', 1, 1, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-07-10 06:00:00'),
+(187, 'BIT111', '300-002', 1, 1, 18, 18, 48, 5.00, 'A', 84, 'Pass', '2026-07-10 06:00:00'),
+(188, 'BBA116', '300-002', 1, 1, 14, 15, 38, 3.50, 'C+', 67, 'Pass', '2026-07-10 06:00:00'),
+(189, 'BIT113', '300-002', 1, 1, 17, 16, 43, 4.50, 'B+', 76, 'Pass', '2026-07-10 06:00:00'),
+(190, 'BJC110', '300-002', 1, 1, 13, 14, 34, 3.00, 'C', 61, 'Pass', '2026-07-10 06:00:00'),
+(191, 'BIT122', '300-002', 1, 2, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-07-10 06:00:00'),
+(192, 'BIT123', '300-002', 1, 2, 19, 19, 49, 5.00, 'A', 87, 'Pass', '2026-07-10 06:00:00'),
+(193, 'BIT124', '300-002', 1, 2, 16, 15, 40, 4.00, 'B', 71, 'Pass', '2026-07-10 06:00:00'),
+(194, 'BIT125', '300-002', 1, 2, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-07-10 06:00:00'),
+(195, 'BIT126', '300-002', 1, 2, 18, 17, 46, 5.00, 'A', 81, 'Pass', '2026-07-10 06:00:00'),
+(196, 'COM122', '300-002', 1, 2, 15, 14, 36, 3.50, 'C+', 65, 'Pass', '2026-07-10 06:00:00'),
+(197, 'FST121', '300-002', 1, 2, 0, 0, 82, 5.00, 'A', 82, 'Pass', '2026-07-10 06:00:00'),
+(198, 'AGM212', '300-002', 2, 3, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-07-10 06:00:00'),
+(199, 'BIT212', '300-002', 2, 3, 18, 18, 48, 5.00, 'A', 84, 'Pass', '2026-07-10 06:00:00'),
+(200, 'BIT213', '300-002', 2, 3, 14, 15, 38, 3.50, 'C+', 67, 'Pass', '2026-07-10 06:00:00'),
+(201, 'BIT214', '300-002', 2, 3, 17, 16, 43, 4.50, 'B+', 76, 'Pass', '2026-07-10 06:00:00'),
+(202, 'BIT215', '300-002', 2, 3, 13, 14, 34, 3.00, 'C', 61, 'Pass', '2026-07-10 06:00:00'),
+(203, 'COM211', '300-002', 2, 3, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-07-10 06:00:00'),
+(204, 'BIT222', '300-002', 2, 4, 19, 19, 49, 5.00, 'A', 87, 'Pass', '2026-07-10 06:00:00'),
+(205, 'BIT223', '300-002', 2, 4, 16, 15, 40, 4.00, 'B', 71, 'Pass', '2026-07-10 06:00:00'),
+(206, 'BIT225', '300-002', 2, 4, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-07-10 06:00:00'),
+(207, 'COM221', '300-002', 2, 4, 18, 17, 46, 5.00, 'A', 81, 'Pass', '2026-07-10 06:00:00'),
+(208, 'COM224', '300-002', 2, 4, 15, 14, 36, 3.50, 'C+', 65, 'Pass', '2026-07-10 06:00:00'),
+(209, 'FST220', '300-002', 2, 4, 0, 0, 82, 5.00, 'A', 82, 'Pass', '2026-07-10 06:00:00'),
+(210, 'BIT110', '300-003', 1, 1, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-07-10 06:00:00'),
+(211, 'BIT111', '300-003', 1, 1, 18, 18, 48, 5.00, 'A', 84, 'Pass', '2026-07-10 06:00:00'),
+(212, 'BBA116', '300-003', 1, 1, 14, 15, 38, 3.50, 'C+', 67, 'Pass', '2026-07-10 06:00:00'),
+(213, 'BIT113', '300-003', 1, 1, 17, 16, 43, 4.50, 'B+', 76, 'Pass', '2026-07-10 06:00:00'),
+(214, 'BJC110', '300-003', 1, 1, 13, 14, 34, 3.00, 'C', 61, 'Pass', '2026-07-10 06:00:00'),
+(215, 'BIT122', '300-003', 1, 2, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-07-10 06:00:00'),
+(216, 'BIT123', '300-003', 1, 2, 19, 19, 49, 5.00, 'A', 87, 'Pass', '2026-07-10 06:00:00'),
+(217, 'BIT124', '300-003', 1, 2, 16, 15, 40, 4.00, 'B', 71, 'Pass', '2026-07-10 06:00:00'),
+(218, 'BIT125', '300-003', 1, 2, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-07-10 06:00:00'),
+(219, 'BIT126', '300-003', 1, 2, 18, 17, 46, 5.00, 'A', 81, 'Pass', '2026-07-10 06:00:00'),
+(220, 'COM122', '300-003', 1, 2, 15, 14, 36, 3.50, 'C+', 65, 'Pass', '2026-07-10 06:00:00'),
+(221, 'FST121', '300-003', 1, 2, 0, 0, 82, 5.00, 'A', 82, 'Pass', '2026-07-10 06:00:00'),
+(222, 'AGM212', '300-003', 2, 3, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-07-10 06:00:00'),
+(223, 'BIT212', '300-003', 2, 3, 18, 18, 48, 5.00, 'A', 84, 'Pass', '2026-07-10 06:00:00'),
+(224, 'BIT213', '300-003', 2, 3, 14, 15, 38, 3.50, 'C+', 67, 'Pass', '2026-07-10 06:00:00'),
+(225, 'BIT214', '300-003', 2, 3, 17, 16, 43, 4.50, 'B+', 76, 'Pass', '2026-07-10 06:00:00'),
+(226, 'BIT215', '300-003', 2, 3, 13, 14, 34, 3.00, 'C', 61, 'Pass', '2026-07-10 06:00:00'),
+(227, 'COM211', '300-003', 2, 3, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-07-10 06:00:00'),
+(228, 'BIT222', '300-003', 2, 4, 19, 19, 49, 5.00, 'A', 87, 'Pass', '2026-07-10 06:00:00'),
+(229, 'BIT223', '300-003', 2, 4, 16, 15, 40, 4.00, 'B', 71, 'Pass', '2026-07-10 06:00:00'),
+(230, 'BIT225', '300-003', 2, 4, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-07-10 06:00:00'),
+(231, 'COM221', '300-003', 2, 4, 18, 17, 46, 5.00, 'A', 81, 'Pass', '2026-07-10 06:00:00'),
+(232, 'COM224', '300-003', 2, 4, 15, 14, 36, 3.50, 'C+', 65, 'Pass', '2026-07-10 06:00:00'),
+(233, 'FST220', '300-003', 2, 4, 0, 0, 82, 5.00, 'A', 82, 'Pass', '2026-07-10 06:00:00'),
+(234, 'BIS313', '300-003', 3, 5, 16, 17, 44, 4.50, 'B+', 77, 'Pass', '2026-07-10 06:00:00'),
+(235, 'BIT311', '300-003', 3, 5, 18, 18, 48, 5.00, 'A', 84, 'Pass', '2026-07-10 06:00:00'),
+(236, 'BIT312', '300-003', 3, 5, 14, 15, 38, 3.50, 'C+', 67, 'Pass', '2026-07-10 06:00:00'),
+(237, 'BIT314', '300-003', 3, 5, 17, 16, 43, 4.50, 'B+', 76, 'Pass', '2026-07-10 06:00:00'),
+(238, 'BIT315', '300-003', 3, 5, 13, 14, 34, 3.00, 'C', 61, 'Pass', '2026-07-10 06:00:00'),
+(239, 'BIT321', '300-003', 3, 6, 15, 16, 42, 4.00, 'B', 73, 'Pass', '2026-07-10 06:00:00'),
+(240, 'BIT325', '300-003', 3, 6, 19, 19, 49, 5.00, 'A', 87, 'Pass', '2026-07-10 06:00:00'),
+(241, 'BIT323', '300-003', 3, 6, 16, 15, 40, 4.00, 'B', 71, 'Pass', '2026-07-10 06:00:00'),
+(242, 'BIT324', '300-003', 3, 6, 14, 16, 39, 3.50, 'C+', 69, 'Pass', '2026-07-10 06:00:00'),
+(243, 'BIT322', '300-003', 3, 6, 18, 17, 46, 5.00, 'A', 81, 'Pass', '2026-07-10 06:00:00'),
+(244, 'FST320', '300-003', 3, 6, 0, 0, 82, 5.00, 'A', 82, 'Pass', '2026-07-10 06:00:00'),
+(248, 'BIT223', '200-001', 2, 4, 17, 18, 45, 5.00, 'A', 80, 'Pass', '2026-07-21 06:25:31'),
+(249, 'BIT223', '100-001', 2, 4, 13, 14, 35, 3.00, 'C', 62, 'Pass', '2026-07-21 06:25:31'),
+(250, 'BIT223', '432-903', 2, 4, 19, 18, 55, 5.00, 'A', 92, 'Pass', '2026-07-21 06:25:31');
 
 --
 -- Triggers `results_tb`
@@ -864,14 +997,15 @@ CREATE TABLE IF NOT EXISTS `result_upload_log_tb` (
   PRIMARY KEY (`ID`),
   KEY `lecturer_ID` (`lecturer_ID`),
   KEY `module_code` (`module_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `result_upload_log_tb`
 --
 
 INSERT INTO `result_upload_log_tb` (`ID`, `lecturer_ID`, `module_code`, `file_name`, `rows_total`, `rows_inserted`, `rows_updated`, `rows_skipped`, `skipped_detail`, `uploaded_at`) VALUES
-(1, 'LEC0329', 'BIT113', 'Result sheet - Copy.xlsx', 1, 0, 1, 0, '', '2026-07-02 06:50:30');
+(1, 'LEC0329', 'BIT113', 'Result sheet - Copy.xlsx', 1, 0, 1, 0, '', '2026-07-02 06:50:30'),
+(2, '183972', 'BIT223', 'BIT223_Result_Sheet_Test.xlsx', 6, 3, 3, 0, '', '2026-07-21 06:25:31');
 
 -- --------------------------------------------------------
 
@@ -895,7 +1029,7 @@ CREATE TABLE IF NOT EXISTS `student_tb` (
   `mode_of_entry` enum('Direct','Transfer','Foundation','Mature','Diploma') COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`ID`),
   UNIQUE KEY `student_ID` (`student_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `student_tb`
@@ -907,7 +1041,11 @@ INSERT INTO `student_tb` (`ID`, `student_ID`, `student_name`, `student_email`, `
 (3, '200-001', 'Amara Nakato', 'an200001@students.cavendish.ac.ug', '$2y$10$UxrzEyQiiQ..8XE0loW8n.0lNtR72XqSmxCijgssaPCzodvVjsFmu', 'BIT', 'F', 'Ugandan', '2002-03-15', 2023, 'AUG', 'Direct'),
 (4, '200-002', 'Brian Otieno', 'bo200002@students.cavendish.ac.ug', '$2y$10$K0nnYR/qK/T49IJEvCuclurHJ8GKhiUv.fBMivJkfth6ZLQ/uzt.i', 'BIT', 'M', 'Kenyan', '2001-07-22', 2022, 'JAN', 'Direct'),
 (5, '200-003', 'Chidi Okonkwo', 'co200003@students.cavendish.ac.ug', '$2y$10$uUwNPA3Prg.Q.qL6hH3Uy.fI8Z68L4HbfvFx/TuPyh8gmWgMCZhpq', 'BIT', 'M', 'Nigerian', '2001-11-05', 2021, 'AUG', 'Direct'),
-(6, '432-903', 'Nalwanga Sylvia', 'ns432903@students.cavendish.ac.ug', '$2y$10$NHMR/9pCjM6drBiUkMwNkuGbj7LfZLB.21kKikPA9zEbjcVS3fLX2', 'BIT', 'F', 'Ugandan', '2001-04-20', 2025, 'JAN', 'Direct');
+(6, '432-903', 'Nalwanga Sylvia', 'ns432903@students.cavendish.ac.ug', '$2y$10$NHMR/9pCjM6drBiUkMwNkuGbj7LfZLB.21kKikPA9zEbjcVS3fLX2', 'BIT', 'F', 'Ugandan', '2001-04-20', 2025, 'JAN', 'Direct'),
+(7, '300-001', 'Fatima Hassan', 'fh300001@students.cavendish.ac.ug', '$2y$10$v5/WGEzktQQg44sD4M3sbuIal4Xg2qdFpxiYDXRXEheuYiBG2Z6aO', 'BIT', 'F', 'Ugandan', '2003-02-10', 2024, 'AUG', 'Direct'),
+(8, '300-002', 'Daniel Mwangi', 'dm300002@students.cavendish.ac.ug', '$2y$10$v5/WGEzktQQg44sD4M3sbuIal4Xg2qdFpxiYDXRXEheuYiBG2Z6aO', 'BIT', 'M', 'Kenyan', '2002-06-18', 2023, 'JAN', 'Direct'),
+(9, '300-003', 'Grace Achieng', 'ga300003@students.cavendish.ac.ug', '$2y$10$v5/WGEzktQQg44sD4M3sbuIal4Xg2qdFpxiYDXRXEheuYiBG2Z6aO', 'BIT', 'F', 'Kenyan', '2001-09-25', 2022, 'AUG', 'Direct'),
+(10, 'LT000001', 'Load Test 1', 'lt1@test.local', 'x', 'BIT', 'M', '', '0000-00-00', 2024, 'JAN', 'Direct');
 
 -- --------------------------------------------------------
 
